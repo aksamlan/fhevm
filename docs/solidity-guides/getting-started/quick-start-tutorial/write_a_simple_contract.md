@@ -4,7 +4,7 @@ In this tutorial, you'll write and test a simple regular Solidity smart contract
 
 In the [next tutorial](turn_it_into_fhevm.md), you'll learn how to convert this contract into an FHEVM contract.
 
-## Prerequiste
+## Prerequisite
 
 - [Set up your Hardhat envrionment](setup.md).
 - Make sure that you Hardhat project is clean and ready to start. See the instructions [here](setup.md#rest-set-the-hardhat-envrionment).
@@ -31,7 +31,7 @@ cd <your-project-root-directory>/contracts
 From there, create a new file named `Counter.sol` and copy/paste the following Solidity code in it.
 
 ```solidity
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 
 /// @title A simple counter contract
@@ -428,7 +428,7 @@ Counter.getCount() === 0
 
 {% endstep %} {% endstepper %}
 
-Now you have succesefully write and test your counter contract. You should have the following files in your project:
+Now you have successfully written and tested your counter contract. You should have the following files in your project:
 
 - [`contracts/Counter.sol`](https://docs.zama.ai/protocol/examples/basic/fhe-counter#counter.sol) — your Solidity smart contract
 - [`test/Counter.ts`](https://docs.zama.ai/protocol/examples/basic/fhe-counter#counter.ts) — your Hardhat test suite written in TypeScript

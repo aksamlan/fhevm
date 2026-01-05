@@ -1,6 +1,6 @@
 # Debugging with `debug.decrypt[XX]`
 
-This guide explains how to use the `debug.decrypt[XX]` functions for debugging encrypted data in mocked environments during development with fhevm.
+This guide explains how to use the `debug.decrypt[XX]` functions for debugging encrypted data in mocked environments during development with FHEVM.
 
 {% hint style="warning" %}
 The `debug.decrypt[XX]` functions should not be used in production as they rely on private keys.
@@ -66,15 +66,6 @@ To utilize the debug functions, import the [utils.ts](https://github.com/zama-ai
 {% endhint %}
 
 For a more complete example, refer to the [ConfidentialERC20 test file](https://github.com/zama-ai/fhevm-hardhat-template/blob/f9505a67db31c988f49b6f4210df47ca3ce97841/test/confidentialERC20/ConfidentialERC20.ts#L181-L205).
-
-### Example: decrypting byte arrays
-
-```typescript
-// Decrypt a 128-byte encrypted value
-const ebytes128Handle: bigint = ...; // Get handle for the encrypted bytes
-const decryptedBytes: string = await debug.decryptEbytes128(ebytes128Handle);
-console.log("Decrypted Bytes:", decryptedBytes);
-```
 
 ## **How it works**
 

@@ -1,53 +1,71 @@
 name: test-suite-e2e-tests
 
+# Github does not support more than 10 inputs for workflow_dispatch:
+# https://docs.github.com/en/actions/reference/events-that-trigger-workflows#providing-inputs
+# Core, relayer and test-suite will use the default versions defined in the `fhevm-cli` script
 on:
   workflow_dispatch:
     inputs:
-      gateway_version:
-        description: "Gateway Image Version"
-        default: ""
-        type: string
-      host_version:
-        description: "Host Image Version"
-        default: ""
-        type: string
-      coprocessor_version:
-        description: "Coprocessor Image Version"
+      connector_version:
+        description: "Connector Version"
         default: ""
         type: string
       db_migration_version:
         description: "Coprocessor DB Migration Image Version"
         default: ""
         type: string
-      connector_version:
-        description: "Connector Version"
+      host_version:
+        description: "Host Image Version"
         default: ""
         type: string
-      test_suite_version:
-        description: "Test Suite E2E Image Version"
+      gateway_version:
+        description: "Gateway Image Version"
+        required: false
         default: ""
         type: string
-      core_version:
-        description: "KMS Core Version"
+      host_listener_version:
+        description: "Host Listener Image Version"
         default: ""
         type: string
-      relayer_version:
-        description: "Relayer Image Version"
+      gateway_listener_version:
+        description: "Gateway Listener Image Version"
+        default: ""
+        type: string
+      tx_sender_version:
+        description: "Transaction Sender Image Version"
+        default: ""
+        type: string
+      tfhe_worker_version:
+        description: "TFHE Worker Image Version"
+        default: ""
+        type: string
+      sns_worker_version:
+        description: "SNS Worker Image Version"
+        default: ""
+        type: string
+      zkproof_worker_version:
+        description: "ZKProof Worker Image Version"
         default: ""
         type: string
   pull_request:
+    branches:
+      - main
+      - release/*
 
+permissions: {}
+
+# Allow to run multiple instances of the same workflow in parallel when triggered manually
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'auto' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check-changes:
     name: test-suite-e2e-tests/check-changes
     permissions:
-      actions: 'read'
-      contents: 'read'
-      pull-requests: 'read'
+      actions: 'read' # Required to read workflow run information
+      contents: 'read' # Required to checkout repository code
+      pull-requests: 'read' # Required to read pull request information
     runs-on: ubuntu-latest
     outputs:
       changes-fhevm: ${{ steps.filter.outputs.fhevm }}
@@ -66,9 +84,9 @@ jobs:
     needs: check-changes
     if: ${{ needs.check-changes.outputs.changes-fhevm == 'true' || github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
     permissions:
-      contents: 'read'
-      id-token: 'write'
-      packages: 'read'
+      contents: 'read' # Required to checkout repository code
+      id-token: 'write' # Required for OIDC authentication
+      packages: 'read' # Required to read GitHub packages/container registry
 
     runs-on: large_ubuntu_32
     steps:
@@ -87,41 +105,95 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_READ_TOKEN }}
 
+      - name: Login to Chainguard Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: cgr.dev
+          username: ${{ secrets.CGR_USERNAME }}
+          password: ${{ secrets.CGR_PASSWORD }}
+
       - name: Set version from release
         if: github.event_name == 'release'
         run: |
           {
-            echo "GATEWAY_VERSION=${{ github.ref_name }}"
-            echo "HOST_VERSION=${{ github.ref_name }}"
-            echo "COPROCESSOR_VERSION=${{ github.ref_name }}"
-            echo "DB_MIGRATION_VERSION=${{ github.ref_name }}"
-            echo "CONNECTOR_VERSION=${{ github.ref_name }}"
-            echo "TEST_SUITE_VERSION=${{ github.ref_name }}"
+            echo "CONNECTOR_DB_MIGRATION_VERSION=${GH_REF_NAME}"
+            echo "CONNECTOR_GW_LISTENER_VERSION=${GH_REF_NAME}"
+            echo "CONNECTOR_KMS_WORKER_VERSION=${GH_REF_NAME}"
+            echo "CONNECTOR_TX_SENDER_VERSION=${GH_REF_NAME}"
+            echo "DB_MIGRATION_VERSION=${GH_REF_NAME}"
+            echo "GATEWAY_VERSION=${GH_REF_NAME}"
+            echo "HOST_VERSION=${GH_REF_NAME}"
+            echo "HOST_LISTENER_VERSION=${GH_REF_NAME}"
+            echo "GW_LISTENER_VERSION=${GH_REF_NAME}"
+            echo "TX_SENDER_VERSION=${GH_REF_NAME}"
+            echo "TFHE_WORKER_VERSION=${GH_REF_NAME}"
+            echo "SNS_WORKER_VERSION=${GH_REF_NAME}"
+            echo "ZKPROOF_WORKER_VERSION=${GH_REF_NAME}"
           } >> "$GITHUB_ENV"
+        env:
+          GH_REF_NAME: ${{ github.ref_name }}
 
       - name: Deploy fhevm Stack
         working-directory: test-suite/fhevm
         env:
+          CONNECTOR_DB_MIGRATION_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.connector_version || env.CONNECTOR_DB_MIGRATION_VERSION }}
+          CONNECTOR_GW_LISTENER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.connector_version || env.CONNECTOR_GW_LISTENER_VERSION }}
+          CONNECTOR_KMS_WORKER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.connector_version || env.CONNECTOR_KMS_WORKER_VERSION }}
+          CONNECTOR_TX_SENDER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.connector_version || env.CONNECTOR_TX_SENDER_VERSION }}
+          DB_MIGRATION_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.db_migration_version || env.DB_MIGRATION_VERSION }}
           GATEWAY_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.gateway_version || env.GATEWAY_VERSION }}
           HOST_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.host_version || env.HOST_VERSION }}
-          COPROCESSOR_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.coprocessor_version || env.COPROCESSOR_VERSION }}
-          DB_MIGRATION_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.db_migration_version || env.DB_MIGRATION_VERSION }}
-          CONNECTOR_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.connector_version || env.CONNECTOR_VERSION }}
-          TEST_SUITE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.test_suite_version || env.TEST_SUITE_VERSION }}
-          CORE_VERSION: ${{ inputs.core_version }}
-          RELAYER_VERSION: ${{ inputs.relayer_version }}
+          HOST_LISTENER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.host_listener_version || env.HOST_LISTENER_VERSION }}
+          GW_LISTENER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.gateway_listener_version || env.GW_LISTENER_VERSION }}
+          TX_SENDER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tx_sender_version || env.TX_SENDER_VERSION }}
+          TFHE_WORKER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tfhe_worker_version || env.TFHE_WORKER_VERSION }}
+          SNS_WORKER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.sns_worker_version || env.SNS_WORKER_VERSION }}
+          ZKPROOF_WORKER_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.zkproof_worker_version || env.ZKPROOF_WORKER_VERSION }}
         run: |
           ./fhevm-cli deploy
 
+      # E2E tests on pausing the Host contracts
+      - name: Pause Host Contracts
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli pause host
+
+      - name: Paused Host contracts test
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli test paused-host-contracts
+
+      - name: Unpause Host Contracts
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli unpause host
+
+      # E2E tests on pausing the Gateway contracts
+      - name: Pause Gateway Contracts
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli pause gateway
+
+      - name: Paused Gateway contracts test
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli test paused-gateway-contracts
+
+      - name: Unpause Gateway Contracts
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli unpause gateway
+
+      # E2E tests after unpausing the Host and Gateway contracts
       - name: Input proof test (uint64)
         working-directory: test-suite/fhevm
         run: |
           ./fhevm-cli test input-proof
 
-      - name: Public Decryption test
+      - name: Input proof test with compute and decrypt (uint64)
         working-directory: test-suite/fhevm
         run: |
-          ./fhevm-cli test public-decryption
+          ./fhevm-cli test input-proof-compute-decrypt
 
       - name: User Decryption test
         working-directory: test-suite/fhevm
@@ -143,18 +215,41 @@ jobs:
         run: |
           ./fhevm-cli test public-decrypt-http-mixed
 
+      - name: Delegate User Decryption (partial test)
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli test delegate-user-decryption
+
+      - name: Random operators test (subset)
+        working-directory: test-suite/fhevm
+        run: |
+          ./fhevm-cli test random-subset
+
+      - name: Host listener poller test
+        working-directory: test-suite/fhevm
+        run: |
+          docker stop coprocessor-host-listener
+          ./fhevm-cli test erc20
+          docker start coprocessor-host-listener
+
       - name: Show logs on test failure
         working-directory: test-suite/fhevm
         if: always()
         run: |
           echo "::group::Relayer Logs"
-          ./fhevm-cli logs relayer
+          ./fhevm-cli logs fhevm-relayer
           echo "::endgroup::"
           echo "::group::SNS Worker Logs"
-          ./fhevm-cli logs sns-worker | grep -v "Selected 0 rows to process"
+          ./fhevm-cli logs coprocessor-sns-worker | grep -v "Selected 0 rows to process"
           echo "::endgroup::"
           echo "::group::Transaction Sender Logs (filtered)"
-          ./fhevm-cli logs transaction-sender | grep -v "Selected 0 rows to process"
+          ./fhevm-cli logs coprocessor-transaction-sender | grep -v "Selected 0 rows to process"
+          echo "::endgroup::"
+          echo "::group::Host Listener"
+          ./fhevm-cli logs coprocessor-host-listener
+          echo "::endgroup::"
+          echo "::group::Gateway Listener"
+          ./fhevm-cli logs coprocessor-gw-listener
           echo "::endgroup::"
 
       - name: Cleanup

@@ -14,19 +14,33 @@ RESET='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT="fhevm"
 
-export GATEWAY_VERSION=${GATEWAY_VERSION:-"v0.7.0"}
-export HOST_VERSION=${HOST_VERSION:-"v0.7.0"}
-export DB_MIGRATION_VERSION=${DB_MIGRATION_VERSION:-"v0.7.0"}
-export HOST_LISTENER_VERSION=${HOST_LISTENER_VERSION:-"v0.7.0"}
-export GW_LISTENER_VERSION=${GW_LISTENER_VERSION:-"v0.7.0"}
-export TX_SENDER_VERSION=${TX_SENDER_VERSION:-"v0.7.0"}
-export TFHE_WORKER_VERSION=${TFHE_WORKER_VERSION:-"v0.7.0"}
-export SNS_WORKER_VERSION=${SNS_WORKER_VERSION:-"v0.7.0"}
-export ZKPROOF_WORKER_VERSION=${ZKPROOF_WORKER_VERSION:-"v0.7.0"}
-export CONNECTOR_VERSION=${CONNECTOR_VERSION:-"v0.7.0"}
-export TEST_SUITE_VERSION=${TEST_SUITE_VERSION:-"v0.7.0"}
-export CORE_VERSION=${CORE_VERSION:-"v0.11.0-rc17"}
-export RELAYER_VERSION=${RELAYER_VERSION:-"v0.1.0-rc13"}
+# Default versions for the fhevm stack.
+
+# KMS connector services.
+export CONNECTOR_DB_MIGRATION_VERSION=${CONNECTOR_DB_MIGRATION_VERSION:-"v0.10.2"}
+export CONNECTOR_GW_LISTENER_VERSION=${CONNECTOR_GW_LISTENER_VERSION:-"v0.10.2"}
+export CONNECTOR_KMS_WORKER_VERSION=${CONNECTOR_KMS_WORKER_VERSION:-"v0.10.2"}
+export CONNECTOR_TX_SENDER_VERSION=${CONNECTOR_TX_SENDER_VERSION:-"v0.10.2"}
+
+# Coprocessor services.
+export DB_MIGRATION_VERSION=${DB_MIGRATION_VERSION:-"v0.10.2"}
+export GW_LISTENER_VERSION=${GW_LISTENER_VERSION:-"v0.10.2"}
+export HOST_LISTENER_VERSION=${HOST_LISTENER_VERSION:-"v0.10.2"}
+export TX_SENDER_VERSION=${TX_SENDER_VERSION:-"v0.10.2"}
+export TFHE_WORKER_VERSION=${TFHE_WORKER_VERSION:-"v0.10.2"}
+export SNS_WORKER_VERSION=${SNS_WORKER_VERSION:-"v0.10.2"}
+export ZKPROOF_WORKER_VERSION=${ZKPROOF_WORKER_VERSION:-"v0.10.2"}
+
+# Gateway and Host contracts.
+export GATEWAY_VERSION=${GATEWAY_VERSION:-"v0.10.2"}
+export HOST_VERSION=${HOST_VERSION:-"v0.10.2"}
+
+# Other services.
+export CORE_VERSION=${CORE_VERSION:-"v0.12.7"}
+export RELAYER_VERSION=${RELAYER_VERSION:-"v0.6.0"}
+# Test-suite docker image cannot be updated with 0.10.x releases because of the introduction a
+# breaking change in delegate user decryption tests in https://github.com/zama-ai/fhevm/pull/1092
+export TEST_SUITE_VERSION=${TEST_SUITE_VERSION:-"1c70735"}
 
 
 function print_logo() {
@@ -46,7 +60,9 @@ function usage {
   echo
   echo -e "${BOLD}${LIGHT_BLUE}Commands:${RESET}"
   echo -e "  ${YELLOW}deploy${RESET} ${CYAN}[--build]${RESET}    WIP: Deploy the full fhevm stack (optionally rebuild images)"
-  echo -e "  ${YELLOW}test${RESET} ${CYAN}[TYPE]${RESET}         Run tests (input-proof|user-decryption|public-decryption|erc20|debug)"
+  echo -e "  ${YELLOW}pause${RESET} ${CYAN}[CONTRACTS]${RESET}     Pause specific contracts (host|gateway)"
+  echo -e "  ${YELLOW}unpause${RESET} ${CYAN}[CONTRACTS]${RESET}     Unpause specific contracts (host|gateway)"
+  echo -e "  ${YELLOW}test${RESET} ${CYAN}[TYPE]${RESET}         Run tests (input-proof|user-decryption|public-decryption|delegate-user-decryption|random|random-subset|operators|erc20|debug)"
   echo -e "  ${YELLOW}upgrade${RESET} ${CYAN}[SERVICE]${RESET}   Upgrade specific service (host|gateway|connector|coprocessor|relayer|test-suite)"
   echo -e "  ${YELLOW}clean${RESET}               Remove all containers and volumes"
   echo -e "  ${YELLOW}logs${RESET} ${CYAN}[SERVICE]${RESET}      View logs for a specific service"
@@ -63,7 +79,8 @@ function usage {
   echo -e "  ${PURPLE}./fhevm-cli deploy --build${RESET}"
   echo -e "  ${PURPLE}./fhevm-cli test input-proof${RESET}"
   echo -e "  ${PURPLE}./fhevm-cli test user-decryption ${RESET}"
-  echo -e "  ${PURPLE}./fhevm-cli test public-decryption -n staging${RESET}"
+  echo -e "  ${PURPLE}./fhevm-cli test public-decrypt-http-ebool ${RESET}"
+  echo -e "  ${PURPLE}./fhevm-cli test public-decrypt-http-mixed -n staging${RESET}"
   echo -e "  ${PURPLE}./fhevm-cli test erc20${RESET}"
   echo -e "  ${PURPLE}./fhevm-cli upgrade coprocessor${RESET}"
   echo -e "${BLUE}============================================================${RESET}"
@@ -93,6 +110,40 @@ case $COMMAND in
     fi
     "${SCRIPT_DIR}/scripts/deploy-fhevm-stack.sh" $BUILD_ARG
     echo -e "${GREEN}${BOLD} [SUCCESS] fhevm stack deployment complete!${RESET}"
+    ;;
+
+  pause)
+    print_logo
+    CONTRACTS=$1
+    if [[ ! $CONTRACTS =~ ^(gateway|host)$ ]]; then
+      echo -e "${RED}[ERROR]${RESET} ${BOLD}Unknown service: $CONTRACTS${RESET}"
+      usage
+      exit 1
+    fi
+
+    echo -e "${LIGHT_BLUE}[PAUSE]${RESET} ${BOLD}Pausing $CONTRACTS...${RESET}"
+    docker compose -p "${PROJECT}" -f "${SCRIPT_DIR}/docker-compose/${CONTRACTS}-pause-docker-compose.yml" up -d
+    # Wait for the pause service to complete
+    echo -e "${YELLOW}[WAIT]${RESET} ${BOLD}Waiting for pause operation to complete...${RESET}"
+    docker compose -p "${PROJECT}" -f "${SCRIPT_DIR}/docker-compose/${CONTRACTS}-pause-docker-compose.yml" wait ${CONTRACTS}-sc-pause
+    echo -e "${GREEN}[SUCCESS]${RESET} ${BOLD}$CONTRACTS paused successfully${RESET}"
+    ;;
+
+  unpause)
+    print_logo
+    CONTRACTS=$1
+    if [[ ! $CONTRACTS =~ ^(gateway|host)$ ]]; then
+      echo -e "${RED}[ERROR]${RESET} ${BOLD}Unknown service: $CONTRACTS${RESET}"
+      usage
+      exit 1
+    fi
+
+    echo -e "${LIGHT_BLUE}[UNPAUSE]${RESET} ${BOLD}Unpausing $CONTRACTS...${RESET}"
+    docker compose -p "${PROJECT}" -f "${SCRIPT_DIR}/docker-compose/${CONTRACTS}-unpause-docker-compose.yml" up -d
+    # Wait for the unpause service to complete
+    echo -e "${YELLOW}[WAIT]${RESET} ${BOLD}Waiting for unpause operation to complete...${RESET}"
+    docker compose -p "${PROJECT}" -f "${SCRIPT_DIR}/docker-compose/${CONTRACTS}-unpause-docker-compose.yml" wait ${CONTRACTS}-sc-unpause
+    echo -e "${GREEN}[SUCCESS]${RESET} ${BOLD}$CONTRACTS unpaused successfully${RESET}"
     ;;
 
   test)
@@ -160,9 +211,24 @@ case $COMMAND in
           log_message="${LIGHT_BLUE}${BOLD}[TEST] INPUT PROOF (uint64)${RESET}"
           docker_args+=("-g" "test user input uint64")
           ;;
+        input-proof-compute-decrypt)
+          log_message="${LIGHT_BLUE}${BOLD}[TEST] INPUT PROOF (uint64)${RESET}"
+          docker_args+=("-g" "test add 42 to uint64 input and decrypt")
+          ;;
         user-decryption)
           log_message="${LIGHT_BLUE}${BOLD}[TEST] USER DECRYPTION${RESET}"
           docker_args+=("-g" "test user decrypt")
+          ;;
+        delegate-user-decryption)
+          log_message="${LIGHT_BLUE}${BOLD}[TEST] USER DECRYPTION${RESET}"
+          docker_args+=("-g" "test delegation and revocation propagation")
+          echo -e "${log_message}"
+          docker exec fhevm-test-suite-e2e-debug "${docker_args[@]}"
+          echo Checking transaction-sender logs for DelegateUserDecryption
+          ./fhevm-cli logs coprocessor-transaction-sender | grep "DelegateUserDecryption txn succeeded"
+          echo Checking transaction-sender logs for RevokeUserDecryptionDelegation
+          ./fhevm-cli logs coprocessor-transaction-sender | grep "RevokeUserDecryptionDelegation txn succeeded"
+          exit 0 # the test has been called unlike other case branch
           ;;
         public-decryption)
           log_message="${LIGHT_BLUE}${BOLD}[TEST] PUBLIC DECRYPTION${RESET}"
@@ -187,6 +253,18 @@ case $COMMAND in
         random)
           log_message="${LIGHT_BLUE}${BOLD}[TEST] RANDOM OPERATORS${RESET}"
           docker_args+=("-g" "generate and decrypt|generating rand in reverting sub-call|upper bound and decrypt")
+          ;;
+        random-subset)
+          log_message="${LIGHT_BLUE}${BOLD}[TEST] RANDOM OPERATORS (SUBSET)${RESET}"
+          docker_args+=("-g" "64 bits generate and decrypt|generating rand in reverting sub-call|64 bits generate with upper bound and decrypt")
+          ;;
+        paused-host-contracts)
+          log_message="${LIGHT_BLUE}${BOLD}[TEST] PAUSED HOST CONTRACTS${RESET}"
+          docker_args+=("-g" "test paused host.*")
+          ;;
+        paused-gateway-contracts)
+          log_message="${LIGHT_BLUE}${BOLD}[TEST] PAUSED GATEWAY CONTRACTS${RESET}"
+          docker_args+=("-g" "test paused gateway.*")
           ;;
         debug)
           echo -e "${LIGHT_BLUE}${BOLD}[DEBUG] Starting debug session...${RESET}"
@@ -213,7 +291,7 @@ case $COMMAND in
   upgrade)
     print_logo
     SERVICE=$1
-    if [[ ! $SERVICE =~ ^(minio|core|gateway|host|connector|coprocessor|relayer|test-suite)$ ]]; then
+    if [[ ! $SERVICE =~ ^(minio|core|gateway-node|gateway-sc|gateway-mocked-payment|host-node|host-sc|kms-connector|coprocessor|relayer|test-suite)$ ]]; then
       echo -e "${RED}[ERROR]${RESET} ${BOLD}Unknown service: $SERVICE${RESET}"
       usage
       exit 1
@@ -239,7 +317,7 @@ case $COMMAND in
     fi
 
     echo -e "${LIGHT_BLUE}[LOGS]${RESET} ${BOLD}Showing logs for $SERVICE...${RESET}"
-    docker logs "${PROJECT}-${SERVICE}"
+    docker logs "${SERVICE}"
     ;;
 
   *)

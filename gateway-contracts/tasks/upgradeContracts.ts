@@ -1,10 +1,8 @@
-import dotenv from "dotenv";
 import { Wallet } from "ethers";
-import fs from "fs";
 import { task, types } from "hardhat/config";
 import { HardhatRuntimeEnvironment, TaskArguments } from "hardhat/types";
 
-import { getRequiredEnvVar } from "./utils/loadVariables";
+import { getRequiredEnvVar, loadGatewayAddresses } from "./utils";
 
 const REINITIALIZE_FUNCTION_PREFIX = "reinitializeV"; // Prefix for reinitialize functions
 
@@ -108,14 +106,14 @@ async function checkImplementationArtifacts(
   }
 }
 
-task("task:upgradeMultichainAcl")
+task("task:upgradeMultichainACL")
   .addParam(
     "currentImplementation",
-    "The currently deployed implementation solidity contract path and name, eg: contracts/MultichainAcl.sol:MultichainAcl",
+    "The currently deployed implementation solidity contract path and name, eg: contracts/MultichainACL.sol:MultichainACL",
   )
   .addParam(
     "newImplementation",
-    "The new implementation solidity contract path and name, eg: contracts/examples/MultichainAclUpgradedExample.sol:MultichainAclUpgradedExample",
+    "The new implementation solidity contract path and name, eg: contracts/examples/MultichainACLUpgradedExample.sol:MultichainACLUpgradedExample",
   )
   .addOptionalParam(
     "useInternalProxyAddress",
@@ -135,15 +133,12 @@ task("task:upgradeMultichainAcl")
   ) {
     await compileImplementations(currentImplementation, newImplementation, hre);
 
-    await checkImplementationArtifacts("MultichainAcl", currentImplementation, newImplementation, hre);
+    await checkImplementationArtifacts("MultichainACL", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.multichain_acl"));
-      proxyAddress = parsedEnv.MULTICHAIN_ACL_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("MULTICHAIN_ACL_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("MULTICHAIN_ACL_ADDRESS");
 
     await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre);
   });
@@ -177,13 +172,10 @@ task("task:upgradeCiphertextCommits")
 
     await checkImplementationArtifacts("CiphertextCommits", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.ciphertext_commits"));
-      proxyAddress = parsedEnv.CIPHERTEXT_COMMITS_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("CIPHERTEXT_COMMITS_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("CIPHERTEXT_COMMITS_ADDRESS");
 
     await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre);
   });
@@ -217,13 +209,10 @@ task("task:upgradeDecryption")
 
     await checkImplementationArtifacts("Decryption", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.decryption"));
-      proxyAddress = parsedEnv.DECRYPTION_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("DECRYPTION_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("DECRYPTION_ADDRESS");
 
     await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre);
   });
@@ -257,38 +246,22 @@ task("task:upgradeGatewayConfig")
 
     await checkImplementationArtifacts("GatewayConfig", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.gateway_config"));
-      proxyAddress = parsedEnv.GATEWAY_CONFIG_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("GATEWAY_CONFIG_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("GATEWAY_CONFIG_ADDRESS");
 
-    // Get custodians from environment variables
-    const numCustodians = parseInt(getRequiredEnvVar("NUM_CUSTODIANS"));
-    const custodians = [];
-    for (let idx = 0; idx < numCustodians; idx++) {
-      custodians.push({
-        txSenderAddress: getRequiredEnvVar(`CUSTODIAN_TX_SENDER_ADDRESS_${idx}`),
-        signerAddress: getRequiredEnvVar(`CUSTODIAN_SIGNER_ADDRESS_${idx}`),
-        encryptionKey: getRequiredEnvVar(`CUSTODIAN_ENCRYPTION_KEY_${idx}`),
-      });
-    }
-
-    await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre, [
-      custodians,
-    ]);
+    await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre, []);
   });
 
-task("task:upgradeKmsManagement")
+task("task:upgradeKMSGeneration")
   .addParam(
     "currentImplementation",
-    "The currently deployed implementation solidity contract path and name, eg: contracts/KmsManagement.sol:KmsManagement",
+    "The currently deployed implementation solidity contract path and name, eg: contracts/KMSGeneration.sol:KMSGeneration",
   )
   .addParam(
     "newImplementation",
-    "The new implementation solidity contract path and name, eg: contracts/examples/KmsManagementUpgradedExample.sol:KmsManagementUpgradedExample",
+    "The new implementation solidity contract path and name, eg: contracts/examples/KMSGenerationUpgradedExample.sol:KMSGenerationUpgradedExample",
   )
   .addOptionalParam(
     "useInternalProxyAddress",
@@ -308,15 +281,12 @@ task("task:upgradeKmsManagement")
   ) {
     await compileImplementations(currentImplementation, newImplementation, hre);
 
-    await checkImplementationArtifacts("KmsManagement", currentImplementation, newImplementation, hre);
+    await checkImplementationArtifacts("KMSGeneration", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.kms_management"));
-      proxyAddress = parsedEnv.KMS_MANAGEMENT_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("KMS_MANAGEMENT_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("KMS_GENERATION_ADDRESS");
 
     await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre);
   });
@@ -350,13 +320,10 @@ task("task:upgradeInputVerification")
 
     await checkImplementationArtifacts("InputVerification", currentImplementation, newImplementation, hre);
 
-    let proxyAddress: string;
     if (useInternalProxyAddress) {
-      const parsedEnv = dotenv.parse(fs.readFileSync("addresses/.env.input_verification"));
-      proxyAddress = parsedEnv.INPUT_VERIFICATION_ADDRESS;
-    } else {
-      proxyAddress = getRequiredEnvVar("INPUT_VERIFICATION_ADDRESS");
+      loadGatewayAddresses();
     }
+    const proxyAddress = getRequiredEnvVar("INPUT_VERIFICATION_ADDRESS");
 
     await upgradeCurrentToNew(proxyAddress, currentImplementation, newImplementation, verifyContract, hre);
   });

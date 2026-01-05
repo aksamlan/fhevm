@@ -1,0 +1,108 @@
+# Example configuration for KMS Connector's `KmsWorker`
+
+# Service name for tracing (optional, defaults to "kms-connector-worker")
+# ENV: KMS_CONNECTOR_SERVICE_NAME
+# service_name = "kms-connector-kms-worker"
+
+# Chain ID for the Gateway network (required)
+# ENV: KMS_CONNECTOR_CHAIN_ID
+chain_id = 54321
+
+# List of KMS-core shards gRPC endpoints (required)
+# Format: http://host:port
+# ENV: KMS_CONNECTOR_KMS_CORE_ENDPOINTS
+# If using environment variables, use a comma separated list of URLs
+# Ex: KMS_CONNECTOR_KMS_CORE_ENDPOINTS="http://[::1]:50051,http://[::1]:50052"
+kms_core_endpoints = ["http://localhost:50051"]
+
+# Gateway WebSocket RPC URL endpoint (required)
+# ENV: KMS_CONNECTOR_GATEWAY_URL
+gateway_url = "http://localhost:8545"
+
+# URL of the KMS Connector internal database (required)
+# Format: see https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-URIS
+# ENV: KMS_CONNECTOR_DATABASE_URL
+database_url = "postgres://postgres:postgres@localhost/kms-connector"
+
+# Timeout to poll the database for fast events, such as decryption (optional, defaults to 3 seconds)
+# ENV: KMS_CONNECTOR_DB_FAST_EVENT_POLLING (format: https://docs.rs/humantime/latest/humantime/)
+# db_fast_event_polling = "3s"
+
+# Timeout to poll the database for long events, such as keygen (optional, defaults to 60 seconds)
+# ENV: KMS_CONNECTOR_DB_LONG_EVENT_POLLING (format: https://docs.rs/humantime/latest/humantime/)
+# db_long_event_polling = "60s"
+
+# The endpoint used to monitor the connector components (optional, defaults to "0.0.0.0:9100")
+# ENV: KMS_CONNECTOR_MONITORING_ENDPOINT
+# monitoring_endpoint = "0.0.0.0:9100"
+
+# The timeout to perform each external service connection healthcheck (optional, defaults to 3s)
+# ENV: KMS_CONNECTOR_HEALTHCHECK_TIMEOUT (format: https://docs.rs/humantime/latest/humantime/)
+# healthcheck_timeout = "3s"
+
+# The limit number of events to fetch from the database (optional, defaults to 50)
+# ENV: KMS_CONNECTOR_EVENTS_BATCH_SIZE
+# events_batch_size = 50
+
+# Number of retries for GRPC requests sent to the KMS Core (optional, defaults to 3)
+# ENV: KMS_CONNECTOR_GRPC_REQUEST_RETRIES
+# grpc_request_retries = 3
+
+# The maximum number of decryption attempts before a decryption request is permanently removed (optional, defaults to 200)
+# ENV: KMS_CONNECTOR_MAX_DECRYPTION_ATTEMPTS
+# max_decryption_attempts = 200
+
+# Retry interval to poll GRPC responses from KMS Core (optional, defaults to 1s)
+# ENV: KMS_CONNECTOR_GRPC_POLL_INTERVAL (format: https://docs.rs/humantime/latest/humantime/)
+# grpc_poll_interval = "1s"
+
+# Number of retries for S3 ciphertext retrieval (optional, default: 3).
+# ENV: KMS_CONNECTOR_S3_CIPHERTEXT_RETRIEVAL_RETRIES
+# s3_ciphertext_retrieval_retries = 3
+
+# Timeout to connect to a S3 bucket (optional, defaults to 3s)
+# ENV: KMS_CONNECTOR_S3_CONNECT_TIMEOUT (format: https://docs.rs/humantime/latest/humantime/)
+# s3_connect_timeout = "3s"
+
+# The maximum number of tasks to process events/responses concurrently (optional, defaults to 1000)
+# ENV: KMS_CONNECTOR_TASK_LIMIT
+# task_limit = 1000
+
+# Configuration of the Decryption contract (required)
+[decryption_contract]
+# Address of the Decryption contract (required)
+# Format: hex string with 0x prefix
+# ENV: KMS_CONNECTOR_DECRYPTION_CONTRACT__ADDRESS
+address = "0x0000000000000000000000000000000000000000"
+# EIP-712 domain name for Decryption contract (optional, defaults to "Decryption")
+# ENV: KMS_CONNECTOR_DECRYPTION_CONTRACT__DOMAIN_NAME
+# domain_name = "Decryption"
+# EIP-712 domain version for Decryption contract (optional, defaults to "1")
+# ENV: KMS_CONNECTOR_DECRYPTION_DOMAIN_VERSION
+# domain_version = "1"
+
+# Configuration of the GatewayConfig contract (required)
+[gateway_config_contract]
+# Address of the GatewayConfig contract (required)
+# Format: hex string with 0x prefix
+# ENV: KMS_CONNECTOR_GATEWAY_CONFIG_CONTRACT__ADDRESS
+address = "0x0000000000000000000000000000000000000000"
+# EIP-712 domain name for GatewayConfig contract (optional, defaults to "GatewayConfig")
+# ENV: KMS_CONNECTOR_GATEWAY_CONFIG_CONTRACT__DOMAIN_NAME
+# domain_name = "GatewayConfig"
+# EIP-712 domain version for GatewayConfig contract (optional, defaults to "1")
+# ENV: KMS_CONNECTOR_GATEWAY_CONFIG_CONTRACT__DOMAIN_VERSION
+# domain_version = "1"
+
+# Configuration of the KMSGeneration contract (required)
+[kms_generation_contract]
+# Address of the KMSGeneration contract (required)
+# Format: hex string with 0x prefix
+# ENV: KMS_CONNECTOR_KMS_GENERATION_CONTRACT__ADDRESS
+address = "0x0000000000000000000000000000000000000000"
+# EIP-712 domain name for KMSGeneration contract (optional, defaults to "KMSGeneration")
+# ENV: KMS_CONNECTOR_KMS_GENERATION_CONTRACT__DOMAIN_NAME
+# domain_name = "KMSGeneration"
+# EIP-712 domain version for KMSGeneration contract (optional, defaults to "1")
+# ENV: KMS_CONNECTOR_KMS_GENERATION_CONTRACT__DOMAIN_VERSION
+# domain_version = "1"

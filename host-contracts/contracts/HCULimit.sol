@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {UUPSUpgradeableEmptyProxy} from "./shared/UUPSUpgradeableEmptyProxy.sol";
-import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import {fhevmExecutorAdd} from "../addresses/FHEVMExecutorAddress.sol";
+import {fhevmExecutorAdd} from "../addresses/FHEVMHostAddresses.sol";
+import {ACLOwnable} from "./shared/ACLOwnable.sol";
 
 import {FheType} from "./shared/FheType.sol";
 
@@ -14,7 +14,7 @@ import {FheType} from "./shared/FheType.sol";
  * transaction level, including the maximum number of homomorphic complexity units (HCU) per transaction.
  * @dev The contract is designed to be used with the FHEVMExecutor contract.
  */
-contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
+contract HCULimit is UUPSUpgradeableEmptyProxy, ACLOwnable {
     /// @notice Returned if the sender is not the FHEVMExecutor.
     error CallerMustBeFHEVMExecutorContract();
 
@@ -37,7 +37,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
     uint256 private constant MAJOR_VERSION = 0;
 
     /// @notice Minor version of the contract.
-    uint256 private constant MINOR_VERSION = 2;
+    uint256 private constant MINOR_VERSION = 1;
 
     /// @notice Patch version of the contract.
     uint256 private constant PATCH_VERSION = 0;
@@ -53,6 +53,10 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
     /// @dev This is the maximum number of homomorphic complexity units that can be used in a single transaction.
     uint256 private constant MAX_HOMOMORPHIC_COMPUTE_UNITS_PER_TX = 20_000_000;
 
+    /// Constant used for making sure the version number used in the `reinitializer` modifier is
+    /// identical between `initializeFromEmptyProxy` and the `reinitializeVX` method
+    uint64 private constant REINITIALIZER_VERSION = 2;
+
     /// keccak256(abi.encode(uint256(keccak256("fhevm.storage.HCULimit")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant HCULimitStorageLocation =
         0xc13af6c514bff8997f30c90003baa82bd02aad978179d1ce58d85c4319ad6500;
@@ -66,14 +70,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
      * @notice  Initializes the contract.
      */
     /// @custom:oz-upgrades-validate-as-initializer
-    function initializeFromEmptyProxy() public virtual onlyFromEmptyProxy reinitializer(3) {
-        __Ownable_init(owner());
-    }
+    function initializeFromEmptyProxy() public virtual onlyFromEmptyProxy reinitializer(REINITIALIZER_VERSION) {}
 
     /**
      * @notice Re-initializes the contract from V1.
+     * @dev Define a `reinitializeVX` function once the contract needs to be upgraded.
      */
-    function reinitializeV2() public virtual reinitializer(3) {}
+    /// @custom:oz-upgrades-unsafe-allow missing-initializer-call
+    /// @custom:oz-upgrades-validate-as-initializer
+    // function reinitializeV2() public virtual reinitializer(REINITIALIZER_VERSION) {}
 
     /**
      * @notice Check the homomorphic complexity units limit for FheAdd.
@@ -96,13 +101,13 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             if (resultType == FheType.Uint8) {
                 opHCU = 84000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 87000;
+                opHCU = 93000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 87000;
+                opHCU = 95000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 128000;
+                opHCU = 133000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 159000;
+                opHCU = 172000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -110,15 +115,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 87000;
+                opHCU = 88000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 87000;
+                opHCU = 93000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 121000;
+                opHCU = 125000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 156000;
+                opHCU = 162000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 249000;
+                opHCU = 259000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -126,6 +131,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheSub.
      * @param resultType Result type.
@@ -145,15 +151,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 83000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 86000;
+                opHCU = 93000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 87000;
+                opHCU = 95000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 129000;
+                opHCU = 133000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 159000;
+                opHCU = 172000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -161,15 +167,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 84000;
+                opHCU = 91000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 88000;
+                opHCU = 93000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 120000;
+                opHCU = 125000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 159000;
+                opHCU = 162000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 244000;
+                opHCU = 260000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -177,6 +183,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheMul.
      * @param resultType Result type.
@@ -196,15 +203,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 117000;
+                opHCU = 122000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 176000;
+                opHCU = 193000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 244000;
+                opHCU = 265000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 346000;
+                opHCU = 365000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 646000;
+                opHCU = 696000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -212,15 +219,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 146000;
+                opHCU = 150000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 207000;
+                opHCU = 222000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 313000;
+                opHCU = 328000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 571000;
+                opHCU = 596000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 1671000;
+                opHCU = 1686000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -228,6 +235,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheDiv.
      * @param resultType Result type.
@@ -246,21 +254,22 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte != 0x01) revert OnlyScalarOperationsAreSupported();
         if (resultType == FheType.Uint8) {
-            opHCU = 203000;
+            opHCU = 210000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 283000;
+            opHCU = 302000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 397000;
+            opHCU = 438000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 651000;
+            opHCU = 715000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 1290000;
+            opHCU = 1225000;
         } else {
             revert UnsupportedOperation();
         }
 
         _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheRem.
      * @param resultType Result type.
@@ -279,21 +288,22 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte != 0x01) revert OnlyScalarOperationsAreSupported();
         if (resultType == FheType.Uint8) {
-            opHCU = 387000;
+            opHCU = 440000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 513000;
+            opHCU = 580000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 714000;
+            opHCU = 792000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 1111000;
+            opHCU = 1153000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 1900000;
+            opHCU = 1943000;
         } else {
             revert UnsupportedOperation();
         }
 
         _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheBitAnd.
      * @param resultType Result type.
@@ -313,19 +323,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Bool) {
-                opHCU = 26000;
+                opHCU = 22000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 28000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 29000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 33000;
+                opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 33000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 38000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -333,17 +343,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Bool) {
-                opHCU = 26000;
+                opHCU = 25000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 33000;
-            } else if (resultType == FheType.Uint128) {
                 opHCU = 34000;
+            } else if (resultType == FheType.Uint128) {
+                opHCU = 37000;
             } else if (resultType == FheType.Uint256) {
                 opHCU = 38000;
             } else {
@@ -353,6 +363,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheBitOr.
      * @param resultType Result type.
@@ -372,19 +383,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Bool) {
-                opHCU = 25000;
+                opHCU = 22000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 28000;
-            } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
-            } else if (resultType == FheType.Uint32) {
                 opHCU = 30000;
-            } else if (resultType == FheType.Uint64) {
+            } else if (resultType == FheType.Uint16) {
+                opHCU = 30000;
+            } else if (resultType == FheType.Uint32) {
                 opHCU = 32000;
-            } else if (resultType == FheType.Uint128) {
+            } else if (resultType == FheType.Uint64) {
                 opHCU = 34000;
-            } else if (resultType == FheType.Uint256) {
+            } else if (resultType == FheType.Uint128) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 38000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -392,19 +403,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Bool) {
-                opHCU = 25000;
+                opHCU = 24000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 28000;
+                opHCU = 30000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
-            } else if (resultType == FheType.Uint32) {
                 opHCU = 31000;
+            } else if (resultType == FheType.Uint32) {
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 33000;
+                opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 35000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 38000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -412,6 +423,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheBitXor.
      * @param resultType Result type.
@@ -431,19 +443,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Bool) {
-                opHCU = 25000;
+                opHCU = 22000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 33000;
+                opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 35000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 39000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -451,19 +463,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Bool) {
-                opHCU = 25000;
+                opHCU = 22000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
-            } else if (resultType == FheType.Uint64) {
                 opHCU = 32000;
+            } else if (resultType == FheType.Uint64) {
+                opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 35000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 39000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -471,6 +483,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheShl.
      * @param resultType Result type.
@@ -490,17 +503,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 33000;
+                opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 33000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 39000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -508,17 +521,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 86000;
+                opHCU = 92000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 118000;
+                opHCU = 125000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 150000;
+                opHCU = 162000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 203000;
+                opHCU = 208000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 251000;
+                opHCU = 272000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 359000;
+                opHCU = 378000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -526,6 +539,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheShr.
      * @param resultType Result type.
@@ -545,17 +559,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 28000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
                 opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 33000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 38000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -563,17 +577,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 88000;
+                opHCU = 91000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 118000;
+                opHCU = 123000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 150000;
+                opHCU = 163000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 203000;
+                opHCU = 209000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 254000;
+                opHCU = 272000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 359000;
+                opHCU = 369000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -581,6 +595,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheRotl.
      * @param resultType Result type.
@@ -600,17 +615,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
                 opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 33000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 38000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -618,17 +633,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 87000;
+                opHCU = 91000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 117000;
+                opHCU = 125000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 150000;
+                opHCU = 163000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 203000;
+                opHCU = 209000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 264000;
+                opHCU = 278000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 367000;
+                opHCU = 378000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -636,6 +651,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheRotr.
      * @param resultType Result type.
@@ -655,17 +671,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 29000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 30000;
+                opHCU = 31000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 30000;
+                opHCU = 32000;
             } else if (resultType == FheType.Uint64) {
                 opHCU = 34000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 34000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 37000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 40000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -673,17 +689,17 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 86000;
+                opHCU = 93000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 117000;
+                opHCU = 125000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 149000;
+                opHCU = 160000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 206000;
+                opHCU = 209000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 261000;
+                opHCU = 283000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 367000;
+                opHCU = 375000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -691,6 +707,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheEq.
      * @param resultType Result type.
@@ -710,21 +727,21 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Bool) {
-                opHCU = 49000;
+                opHCU = 25000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 52000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 52000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 81000;
+                opHCU = 82000;
             } else if (resultType == FheType.Uint64) {
                 opHCU = 83000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 115000;
-            } else if (resultType == FheType.Uint160) {
-                opHCU = 115000;
-            } else if (resultType == FheType.Uint256) {
                 opHCU = 117000;
+            } else if (resultType == FheType.Uint160) {
+                opHCU = 117000;
+            } else if (resultType == FheType.Uint256) {
+                opHCU = 118000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -732,21 +749,21 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Bool) {
-                opHCU = 49000;
+                opHCU = 26000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 49000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 78000;
+                opHCU = 83000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 82000;
+                opHCU = 86000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 116000;
+                opHCU = 120000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 117000;
+                opHCU = 122000;
             } else if (resultType == FheType.Uint160) {
-                opHCU = 125000;
+                opHCU = 137000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 151000;
+                opHCU = 152000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -754,6 +771,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheNe.
      * @param resultType Result type.
@@ -773,19 +791,19 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Bool) {
-                opHCU = 49000;
+                opHCU = 23000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 49000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 51000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 80000;
+                opHCU = 83000;
             } else if (resultType == FheType.Uint64) {
                 opHCU = 84000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 115000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint160) {
-                opHCU = 115000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint256) {
                 opHCU = 117000;
             } else {
@@ -795,21 +813,21 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Bool) {
-                opHCU = 49000;
+                opHCU = 23000;
             } else if (resultType == FheType.Uint8) {
-                opHCU = 52000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 82000;
+                opHCU = 83000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 84000;
+                opHCU = 85000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 111000;
+                opHCU = 118000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 116000;
+                opHCU = 122000;
             } else if (resultType == FheType.Uint160) {
-                opHCU = 124000;
+                opHCU = 136000;
             } else if (resultType == FheType.Uint256) {
-                opHCU = 149000;
+                opHCU = 150000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -817,6 +835,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheGe.
      * @param resultType Result type.
@@ -836,15 +855,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 60000;
+                opHCU = 52000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 60000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 81000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 112000;
+                opHCU = 116000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 144000;
+                opHCU = 149000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -852,15 +871,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 55000;
+                opHCU = 63000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 80000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 111000;
+                opHCU = 118000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 146000;
+                opHCU = 152000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 206000;
+                opHCU = 210000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -868,6 +887,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheGt.
      * @param resultType Result type.
@@ -887,15 +907,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 53000;
+                opHCU = 52000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 53000;
+                opHCU = 55000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 82000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 113000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 144000;
+                opHCU = 150000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -903,15 +923,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 56000;
+                opHCU = 59000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 83000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 111000;
+                opHCU = 118000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 141000;
+                opHCU = 152000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 206000;
+                opHCU = 218000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -919,6 +939,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheLe.
      * @param resultType Result type.
@@ -938,15 +959,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 53000;
+                opHCU = 58000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 54000;
+                opHCU = 58000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 80000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 113000;
+                opHCU = 119000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 143000;
+                opHCU = 150000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -954,15 +975,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 54000;
+                opHCU = 58000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 80000;
+                opHCU = 83000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 113000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 146000;
+                opHCU = 149000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 204000;
+                opHCU = 218000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -970,6 +991,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheLt.
      * @param resultType Result type.
@@ -989,15 +1011,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 51000;
+                opHCU = 52000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 53000;
+                opHCU = 58000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 80000;
+                opHCU = 83000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 113000;
+                opHCU = 118000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 143000;
+                opHCU = 149000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1005,15 +1027,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 56000;
+                opHCU = 59000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 80000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 111000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 142000;
+                opHCU = 146000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 204000;
+                opHCU = 215000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1021,6 +1043,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheMin.
      * @param resultType Result type.
@@ -1040,15 +1063,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 86000;
+                opHCU = 84000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 86000;
+                opHCU = 88000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 113000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 149000;
+                opHCU = 150000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 180000;
+                opHCU = 186000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1056,15 +1079,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 111000;
+                opHCU = 119000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 141000;
+                opHCU = 146000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 177000;
+                opHCU = 182000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 210000;
+                opHCU = 219000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 280000;
+                opHCU = 289000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1072,6 +1095,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheMax.
      * @param resultType Result type.
@@ -1091,15 +1115,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         uint256 opHCU;
         if (scalarByte == 0x01) {
             if (resultType == FheType.Uint8) {
-                opHCU = 81000;
+                opHCU = 89000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 83000;
+                opHCU = 89000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 112000;
+                opHCU = 117000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 147000;
+                opHCU = 149000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 181000;
+                opHCU = 180000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1107,15 +1131,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitOneOp(opHCU, lhs, result);
         } else {
             if (resultType == FheType.Uint8) {
-                opHCU = 111000;
+                opHCU = 121000;
             } else if (resultType == FheType.Uint16) {
-                opHCU = 140000;
+                opHCU = 145000;
             } else if (resultType == FheType.Uint32) {
-                opHCU = 174000;
+                opHCU = 180000;
             } else if (resultType == FheType.Uint64) {
-                opHCU = 211000;
+                opHCU = 218000;
             } else if (resultType == FheType.Uint128) {
-                opHCU = 274000;
+                opHCU = 290000;
             } else {
                 revert UnsupportedOperation();
             }
@@ -1123,6 +1147,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
             _adjustAndCheckFheTransactionLimitTwoOps(opHCU, lhs, rhs, result);
         }
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheNeg.
      * @param ct The only operand.
@@ -1132,15 +1157,15 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Uint8) {
-            opHCU = 72000;
+            opHCU = 79000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 89000;
+            opHCU = 93000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 116000;
+            opHCU = 95000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 150000;
+            opHCU = 131000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 241000;
+            opHCU = 168000;
         } else if (resultType == FheType.Uint256) {
             opHCU = 269000;
         } else {
@@ -1148,6 +1173,7 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         }
         _adjustAndCheckFheTransactionLimitOneOp(opHCU, ct, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheNot.
      * @param ct The only operand.
@@ -1157,24 +1183,25 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Bool) {
-            opHCU = 4000;
+            opHCU = 2;
         } else if (resultType == FheType.Uint8) {
-            opHCU = 8000;
+            opHCU = 9;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 15000;
+            opHCU = 16;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 28000;
+            opHCU = 32;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 84000;
+            opHCU = 63;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 109000;
+            opHCU = 130;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 216000;
+            opHCU = 130;
         } else {
             revert UnsupportedOperation();
         }
         _adjustAndCheckFheTransactionLimitOneOp(opHCU, ct, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for Cast.
      * @param ct The only operand.
@@ -1184,24 +1211,25 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Bool) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint8) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 200;
+            opHCU = 32;
         } else {
             revert UnsupportedOperation();
         }
         _adjustAndCheckFheTransactionLimitOneOp(opHCU, ct, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for TrivialEncrypt.
      * @param resultType Result type.
@@ -1211,27 +1239,28 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Bool) {
-            opHCU = 100;
+            opHCU = 32;
         } else if (resultType == FheType.Uint8) {
-            opHCU = 100;
+            opHCU = 32;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 200;
+            opHCU = 32;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 300;
+            opHCU = 32;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 600;
+            opHCU = 32;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 650;
+            opHCU = 32;
         } else if (resultType == FheType.Uint160) {
-            opHCU = 700;
+            opHCU = 32;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 800;
+            opHCU = 32;
         } else {
             revert UnsupportedOperation();
         }
         _updateAndVerifyHCUTransactionLimit(opHCU);
         _setHCUForHandle(result, opHCU);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for IfThenElse.
      * @param resultType Result type.
@@ -1249,26 +1278,27 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Bool) {
-            opHCU = 43000;
+            opHCU = 55000;
         } else if (resultType == FheType.Uint8) {
-            opHCU = 43000;
+            opHCU = 55000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 44000;
+            opHCU = 55000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 45000;
+            opHCU = 55000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 52000;
+            opHCU = 55000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 51000;
+            opHCU = 57000;
         } else if (resultType == FheType.Uint160) {
-            opHCU = 56000;
+            opHCU = 83000;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 71000;
+            opHCU = 108000;
         } else {
             revert UnsupportedOperation();
         }
         _adjustAndCheckFheTransactionLimitThreeOps(opHCU, lhs, middle, rhs, result);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheRand.
      * @param resultType Result type.
@@ -1278,25 +1308,26 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Bool) {
-            opHCU = 100000;
+            opHCU = 19000;
         } else if (resultType == FheType.Uint8) {
-            opHCU = 100000;
+            opHCU = 23000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 100000;
+            opHCU = 23000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 100000;
+            opHCU = 24000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 100000;
+            opHCU = 24000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 100000;
+            opHCU = 25000;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 100000;
+            opHCU = 30000;
         } else {
             revert UnsupportedOperation();
         }
         _updateAndVerifyHCUTransactionLimit(opHCU);
         _setHCUForHandle(result, opHCU);
     }
+
     /**
      * @notice Check the homomorphic complexity units limit for FheRandBounded.
      * @param resultType Result type.
@@ -1306,23 +1337,24 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
         if (msg.sender != fhevmExecutorAddress) revert CallerMustBeFHEVMExecutorContract();
         uint256 opHCU;
         if (resultType == FheType.Uint8) {
-            opHCU = 100000;
+            opHCU = 23000;
         } else if (resultType == FheType.Uint16) {
-            opHCU = 100000;
+            opHCU = 23000;
         } else if (resultType == FheType.Uint32) {
-            opHCU = 100000;
+            opHCU = 24000;
         } else if (resultType == FheType.Uint64) {
-            opHCU = 100000;
+            opHCU = 24000;
         } else if (resultType == FheType.Uint128) {
-            opHCU = 100000;
+            opHCU = 25000;
         } else if (resultType == FheType.Uint256) {
-            opHCU = 100000;
+            opHCU = 30000;
         } else {
             revert UnsupportedOperation();
         }
         _updateAndVerifyHCUTransactionLimit(opHCU);
         _setHCUForHandle(result, opHCU);
     }
+
     /**
      * @notice Getter function for the FHEVMExecutor contract address.
      * @return fhevmExecutorAddress Address of the FHEVMExecutor.
@@ -1423,11 +1455,8 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
      * @dev This function uses inline assembly to load the HCU from a specific storage location.
      */
     function _getHCUForHandle(bytes32 handle) internal view virtual returns (uint256 handleHCU) {
-        bytes32 slot = keccak256(abi.encodePacked(HCULimitStorageLocation, handle));
         assembly {
-            // Ensure the slot is properly aligned and validated before using tload.
-            // This assumes the slot is derived from a secure and deterministic process.
-            handleHCU := tload(slot)
+            handleHCU := tload(handle)
         }
     }
 
@@ -1437,10 +1466,8 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
      * @dev This function uses inline assembly to store the HCU in a specific storage location.
      */
     function _getHCUForTransaction() internal view virtual returns (uint256 transactionHCU) {
-        /// @dev keccak256(abi.encodePacked(HCULimitStorageLocation, "HCU"))
-        bytes32 slot = 0x9fe02aa19e370f46d43dc2b6620733ba9c3b193659e9699f55eefe911af8a4b4;
         assembly {
-            transactionHCU := tload(slot)
+            transactionHCU := tload(0)
         }
     }
 
@@ -1448,32 +1475,29 @@ contract HCULimit is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable {
      * @notice Sets the HCU for a handle in the transient storage.
      * @param handle The handle for which to set the HCU.
      * @param handleHCU The HCU to set for the handle.
-     * @dev This function uses inline assembly to store the HCU in a specific storage location.
+     * @dev This function uses inline assembly to store the HCU in a specific transient storage slot.
      */
     function _setHCUForHandle(bytes32 handle, uint256 handleHCU) internal virtual {
-        bytes32 slot = keccak256(abi.encodePacked(HCULimitStorageLocation, handle));
         assembly {
-            tstore(slot, handleHCU)
+            tstore(handle, handleHCU)
         }
     }
 
     /**
      * @notice Updates the current HCU consumption for the transaction and stores it in the transient storage.
      * @param transactionHCU The total HCU for the transaction.
-     * @dev This function uses inline assembly to store the HCU in a specific storage location.
+     * @dev This function uses inline assembly to store the HCU in a specific transient storage slot.
      */
     function _setHCUForTransaction(uint256 transactionHCU) internal virtual {
-        /// @dev keccak256(abi.encodePacked(HCULimitStorageLocation, "HCU"))
-        bytes32 slot = 0x9fe02aa19e370f46d43dc2b6620733ba9c3b193659e9699f55eefe911af8a4b4;
         assembly {
-            tstore(slot, transactionHCU)
+            tstore(0, transactionHCU) // to avoid collisions with handles (see _setHCUForHandle)
         }
     }
 
     /**
      * @dev Should revert when msg.sender is not authorized to upgrade the contract.
      */
-    function _authorizeUpgrade(address _newImplementation) internal virtual override onlyOwner {}
+    function _authorizeUpgrade(address _newImplementation) internal virtual override onlyACLOwner {}
 
     /**
      * @dev Returns the maximum of two numbers.

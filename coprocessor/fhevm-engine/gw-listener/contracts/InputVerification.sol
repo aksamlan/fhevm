@@ -2,14 +2,15 @@
 pragma solidity ^0.8.28;
 
 /// @dev This contract is a mock of the InputVerification contract from the Gateway.
-/// source: github.com/zama-ai/fhevm-gateway/blob/main/contracts/InputVerification.sol
+/// source: github.com/zama-ai/fhevm/blob/main/gateway-contracts/contracts/InputVerification.sol
 contract InputVerification {
     event VerifyProofRequest(
         uint256 indexed zkProofId,
         uint256 indexed contractChainId,
         address contractAddress,
         address userAddress,
-        bytes ciphertextWithZKProof
+        bytes ciphertextWithZKProof,
+        bytes extraData
     );
 
     uint256 zkProofIdCounter = 0;
@@ -18,7 +19,8 @@ contract InputVerification {
         uint256 contractChainId,
         address contractAddress,
         address userAddress,
-        bytes calldata ciphertextWithZKProof
+        bytes calldata ciphertextWithZKProof,
+        bytes calldata extraData
     ) public {
         uint256 zkProofId = zkProofIdCounter;
         zkProofIdCounter += 1;
@@ -27,7 +29,8 @@ contract InputVerification {
             contractChainId,
             contractAddress,
             userAddress,
-            ciphertextWithZKProof
+            ciphertextWithZKProof,
+            extraData
         );
     }
 }

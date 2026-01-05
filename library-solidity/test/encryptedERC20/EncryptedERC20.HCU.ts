@@ -34,17 +34,17 @@ describe('EncryptedERC20:HCU', function () {
     const t2 = await tx.wait();
     expect(t2?.status).to.eq(1);
 
-    const { globalTxHCU: HCUTransfer, maxTxHCUDepth: HCUMaxDepthTransfer } = getTxHCUFromTxReceipt(t2);
+    const { globalTxHCU: HCUTransfer, maxTxHCUDepth: HCUMaxDepthTransfer } = getTxHCUFromTxReceipt(t2!);
     console.log('Total HCU in transfer', HCUTransfer);
     console.log('HCU Depth in transfer', HCUMaxDepthTransfer);
-    console.log('Native Gas Consumed in transfer', t2.gasUsed);
+    console.log('Native Gas Consumed in transfer', t2!.gasUsed);
 
-    // Le euint64 (146000) +  TrivialEncrypt euint64 (600) + Select euint64 (52000) + Add euint64 (156000)
-    /// + TrivialEncrypt euint64(600) (Initialize balance to 0) + Sub euint euint64 (159000)
-    expect(HCUTransfer).to.eq(514_200, 'HCU incorrect');
+    // Le euint64 (149000) +  TrivialEncrypt euint64 (32) + Select euint64 (55000) + Add euint64 (162000)
+    /// + TrivialEncrypt euint64(32) (Initialize balance to 0) + Sub euint euint64 (162000)
+    expect(HCUTransfer).to.eq(528_064, 'HCU incorrect');
 
-    /// Le euint64 (146000) + Select euint64 (52000) + Sub euint64 (159000)
-    expect(HCUMaxDepthTransfer).to.eq(357_000, 'HCU Depth incorrect');
+    /// Le euint64 (149000) + Select euint64 (55000) + Sub euint64 (162000)
+    expect(HCUMaxDepthTransfer).to.eq(366_000, 'HCU Depth incorrect');
   });
 
   it('should be able to transferFrom only if allowance is sufficient', async function () {
@@ -74,16 +74,16 @@ describe('EncryptedERC20:HCU', function () {
 
     const t3 = await tx3.wait();
 
-    const { globalTxHCU: HCUTransferFrom, maxTxHCUDepth: HCUMaxDepthTransferFrom } = getTxHCUFromTxReceipt(t3);
+    const { globalTxHCU: HCUTransferFrom, maxTxHCUDepth: HCUMaxDepthTransferFrom } = getTxHCUFromTxReceipt(t3!);
     console.log('Total HCU in transferFrom', HCUTransferFrom);
     console.log('HCU Depth in transferFrom', HCUMaxDepthTransferFrom);
-    console.log('Native Gas Consumed in transferFrom', t3.gasUsed);
+    console.log('Native Gas Consumed in transferFrom', t3!.gasUsed);
 
-    // Le euint64 (146000) + Le euint64 (146000) + And ebool (26000) + Sub euint64 (159000) + TrivialEncrypt (600) + Select euint64 (52000) +
-    // Select euint64 (52000) + Add euint64 (156000) + TrivialEncrypt (Initialize balance to 0) (600) + Sub euint64 (159000)
-    expect(HCUTransferFrom).to.eq(897_200, 'HCU incorrect');
+    // Le euint64 (149000) + Le euint64 (149000) + And ebool (34000) + Sub euint64 (162000) + TrivialEncrypt (32) + Select euint64 (55000) +
+    // Select euint64 (55000) + Add ebool (25000) + TrivialEncrypt (Initialize balance to 0) (32) + Sub euint64 (162000)
+    expect(HCUTransferFrom).to.eq(919_064, 'HCU incorrect');
 
-    // Le euint64 (146000) + And ebool (26000) + Select euint64 (52000) + Sub euint64 (159000)
-    expect(HCUMaxDepthTransferFrom).to.eq(383_000, 'HCU Depth incorrect');
+    // Le euint64 (149000) + And ebool (25000) + Select euint64 (55000) + Sub euint64 (162000)
+    expect(HCUMaxDepthTransferFrom).to.eq(391_000, 'HCU Depth incorrect');
   });
 });

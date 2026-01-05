@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "../../lib/FHE.sol";
-import "../FHEVMConfig.sol";
+import {CoprocessorSetup} from "../CoprocessorSetup.sol";
 
 contract FHEVMManualTestSuite {
     ebool public resEbool;
@@ -15,7 +15,7 @@ contract FHEVMManualTestSuite {
     eaddress public resAdd;
 
     constructor() {
-        FHE.setCoprocessor(FHEVMConfig.defaultConfig()); // Set up the FHEVM configuration for this contract
+        FHE.setCoprocessor(CoprocessorSetup.defaultConfig()); // Set up the Coprocessor configuration for this contract
     }
 
     function eqEbool(bool a, bool b) external {
@@ -209,5 +209,26 @@ contract FHEVMManualTestSuite {
 
     function test_ebool_xor_scalarR(bool a, bool b) public {
         resEbool = FHE.xor(FHE.asEbool(a), b);
+    }
+
+    function test_ebool_select_unitialized() public {
+        ebool a_;
+        ebool b_;
+        ebool c_;
+        resEbool = FHE.select(a_, b_, c_);
+    }
+
+    function test_ebaddress_select_unitialized() public {
+        ebool a_;
+        eaddress b_;
+        eaddress c_;
+        resAdd = FHE.select(a_, b_, c_);
+    }
+
+    function test_euint64_select_unitialized() public {
+        ebool a_;
+        euint64 b_;
+        euint64 c_;
+        resEuint64 = FHE.select(a_, b_, c_);
     }
 }

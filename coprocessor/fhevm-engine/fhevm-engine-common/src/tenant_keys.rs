@@ -4,12 +4,12 @@ use sqlx::{
     postgres::{types::Oid, PgRow},
     PgPool, Row,
 };
-use std::sync::Arc;
+use std::{ops::DerefMut, sync::Arc};
 use tracing::info;
 
 pub struct TfheTenantKeys {
     pub tenant_id: i32,
-    pub chain_id: i32,
+    pub chain_id: i64,
     pub verifying_contract_address: String,
     pub acl_contract_address: String,
     pub sks: tfhe::ServerKey,
@@ -20,7 +20,7 @@ pub struct TfheTenantKeys {
 
 pub struct FetchTenantKeyResult {
     pub tenant_id: i32,
-    pub chain_id: i32,
+    pub chain_id: i64,
     pub verifying_contract_address: String,
     pub acl_contract_address: String,
     pub server_key: tfhe::ServerKey,
@@ -30,9 +30,9 @@ pub struct FetchTenantKeyResult {
 
 /// Returns chain id and verifying contract address for EIP712 signature and tfhe server key
 pub async fn fetch_tenant_server_key<'a, T>(
-    id: i32,
+    id: i64,
     pool: T,
-    tenant_key_cache: &std::sync::Arc<tokio::sync::RwLock<lru::LruCache<i32, TfheTenantKeys>>>,
+    tenant_key_cache: &std::sync::Arc<tokio::sync::RwLock<lru::LruCache<i64, TfheTenantKeys>>>,
     is_tenant_id: bool,
 ) -> Result<FetchTenantKeyResult, Box<dyn std::error::Error + Send + Sync>>
 where
@@ -59,7 +59,7 @@ where
     }
 }
 pub async fn query_tenant_keys<'a, T>(
-    ids_to_query: Vec<i32>,
+    ids_to_query: Vec<i64>,
     conn: T,
     is_tenant_id: bool,
 ) -> Result<Vec<TfheTenantKeys>, Box<dyn std::error::Error + Send + Sync>>
@@ -90,7 +90,7 @@ where
 
     for row in rows {
         let tenant_id: i32 = row.try_get("tenant_id")?;
-        let chain_id: i32 = row.try_get("chain_id")?;
+        let chain_id: i64 = row.try_get("chain_id")?;
         let acl_contract_address: String = row.try_get("acl_contract_address")?;
         let verifying_contract_address: String = row.try_get("verifying_contract_address")?;
         let pks_key: Vec<u8> = row.try_get("pks_key")?;
@@ -123,9 +123,9 @@ where
 }
 
 pub async fn populate_cache_with_tenant_keys<'a, T>(
-    tenants_to_query: Vec<i32>,
+    tenants_to_query: Vec<i64>,
     conn: T,
-    tenant_key_cache: &std::sync::Arc<tokio::sync::RwLock<lru::LruCache<i32, TfheTenantKeys>>>,
+    tenant_key_cache: &std::sync::Arc<tokio::sync::RwLock<lru::LruCache<i64, TfheTenantKeys>>>,
     is_tenant_id: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
@@ -156,7 +156,7 @@ where
 
         for key in keys {
             let id = if is_tenant_id {
-                key.tenant_id
+                key.tenant_id as i64
             } else {
                 key.chain_id
             };
@@ -172,7 +172,7 @@ pub struct TenantInfo {
     /// The key_id of the tenant
     pub key_id: [u8; 32],
     /// The chain id of the tenant
-    pub chain_id: i32,
+    pub chain_id: i64,
 }
 
 /// Returns the key_id, chain_id for a given tenant_id
@@ -320,13 +320,22 @@ pub async fn write_large_object_in_chunks(
     data: &[u8],
     chunk_size: usize,
 ) -> anyhow::Result<Oid> {
-    const INV_WRITE: i32 = 131072;
-
     let mut tx: sqlx::Transaction<'_, sqlx::Postgres> = pool.begin().await?;
+    let oid = write_large_object_in_chunks_tx(&mut tx, data, chunk_size).await?;
+    tx.commit().await?;
+    Ok(oid)
+}
+
+pub async fn write_large_object_in_chunks_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    data: &[u8],
+    chunk_size: usize,
+) -> anyhow::Result<Oid> {
+    const INV_WRITE: i32 = 131072;
 
     // Create new LO
     let row = sqlx::query("SELECT lo_create(0)")
-        .fetch_one(&mut *tx)
+        .fetch_one(tx.deref_mut())
         .await?;
     let oid: Oid = row.try_get(0)?;
 
@@ -336,7 +345,7 @@ pub async fn write_large_object_in_chunks(
     let row = sqlx::query("SELECT lo_open($1, $2)")
         .bind(oid)
         .bind(INV_WRITE)
-        .fetch_one(&mut *tx)
+        .fetch_one(tx.deref_mut())
         .await?;
     let fd: i32 = row.try_get(0)?;
 
@@ -350,7 +359,7 @@ pub async fn write_large_object_in_chunks(
         sqlx::query("SELECT lowrite($1, $2)")
             .bind(fd)
             .bind(chunk)
-            .execute(&mut *tx)
+            .execute(tx.deref_mut())
             .await?;
     }
 
@@ -363,9 +372,8 @@ pub async fn write_large_object_in_chunks(
     // Close LO
     let _ = sqlx::query("SELECT lo_close($1)")
         .bind(fd)
-        .fetch_one(&mut *tx)
+        .fetch_one(tx.deref_mut())
         .await?;
 
-    tx.commit().await?;
     Ok(oid)
 }

@@ -55,9 +55,9 @@ Replace standard data types and operations with their FHEVM equivalents for the 
 pragma solidity ^0.8.0;
 
 import "@fhevm/solidity/lib/FHE.sol";
-import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
+import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
-contract EncryptedSimpleVoting is SepoliaConfig {
+contract EncryptedSimpleVoting is ZamaEthereumConfig {
     enum VotingStatus {
         Open,
         DecryptionInProgress,
@@ -104,8 +104,10 @@ contract EncryptedSimpleVoting is SepoliaConfig {
         status = VotingStatus.DecryptionInProgress;
     }
 
-    function callbackDecryptVotes(uint256 requestId, uint64 yesVotes, uint64 noVotes, bytes[] memory signatures) public {
-        FHE.checkSignatures(requestId, signatures);
+    function callbackDecryptVotes(uint256 requestId, bytes memory cleartexts, bytes memory decryptionProof) public {
+        FHE.checkSignatures(requestId, cleartexts, decryptionProof);
+
+        (uint64 yesVotes, uint64 noVotes) = abi.decode(cleartexts, (uint64, uint64));
         decryptedYesVotes = yesVotes;
         decryptedNoVotes = noVotes;
         status = VotingStatus.ResultsDecrypted;

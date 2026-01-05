@@ -1,10 +1,11 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import dotenv from "dotenv";
 import { Wallet } from "ethers";
-import fs from "fs";
 import hre from "hardhat";
+import path from "path";
 
-import { getRequiredEnvVar } from "../../tasks/utils/loadVariables";
+import { ADDRESSES_DIR } from "../../hardhat.config";
+import { getRequiredEnvVar } from "../../tasks/utils";
 import { fund } from "./wallets";
 
 // Loads the host chains' chain IDs
@@ -17,7 +18,7 @@ export function loadHostChainIds() {
 
 // Check if the given signer is a valid hardhat signer
 // This is needed because `hre.ethers.getSigner` does not throw an error if it used on a random address
-async function checkIsHardhatSigner(signer: HardhatEthersSigner) {
+async function checkIsHardhatSigner(signer: HardhatEthersSigner | Wallet) {
   const signers = await hre.ethers.getSigners();
   if (signers.findIndex((s) => s.address === signer.address) === -1) {
     throw new Error(
@@ -30,13 +31,21 @@ async function checkIsHardhatSigner(signer: HardhatEthersSigner) {
 // Creates the wallets used for the tests from the private keys in the .env file.
 // Adds some funds to these wallets.
 async function initTestingWallets(nKmsNodes: number, nCoprocessors: number, nCustodians: number) {
-  // Get signers
-  // - the owner owns the contracts and can initialize the protocol, update FHE params
-  // - the pauser can pause the protocol
+  // The owner owns the contracts and can initialize the protocol
   const owner = new Wallet(getRequiredEnvVar("DEPLOYER_PRIVATE_KEY"), hre.ethers.provider);
   await fund(owner.address);
-  const pauser = await hre.ethers.getSigner(getRequiredEnvVar("PAUSER_ADDRESS"));
+
+  // A pauser can pause the protocol by pausing some of the contracts
+  const pauser = new Wallet(getRequiredEnvVar("PAUSER_PRIVATE_KEY"), hre.ethers.provider);
   await checkIsHardhatSigner(pauser);
+
+  // The account that sends request transactions (input verification, decryption)
+  const txSenderPrivateKey = getRequiredEnvVar("TX_SENDER_PRIVATE_KEY");
+  const tokenFundedTxSender = new Wallet(txSenderPrivateKey, hre.ethers.provider);
+  await checkIsHardhatSigner(tokenFundedTxSender);
+
+  // Fund the tx sender with mocked $ZAMA tokens and approve the contracts with maximum allowance over its tokens
+  await hre.run("task:setTxSenderMockedPayment", { amount: BigInt(10 ** 12) });
 
   // Load the KMS transaction senders
   const kmsTxSenders = [];
@@ -54,6 +63,20 @@ async function initTestingWallets(nKmsNodes: number, nCoprocessors: number, nCus
     kmsSigners.push(kmsSigner);
   }
 
+  // Load the KMS node IPs
+  const kmsNodeIps = [];
+  for (let idx = 0; idx < nKmsNodes; idx++) {
+    const kmsNodeIp = getRequiredEnvVar(`KMS_NODE_IP_ADDRESS_${idx}`);
+    kmsNodeIps.push(kmsNodeIp);
+  }
+
+  // Load the KMS node storage URLs
+  const kmsNodeStorageUrls = [];
+  for (let idx = 0; idx < nKmsNodes; idx++) {
+    const kmsNodeStorageUrl = getRequiredEnvVar(`KMS_NODE_STORAGE_URL_${idx}`);
+    kmsNodeStorageUrls.push(kmsNodeStorageUrl);
+  }
+
   // Load the coprocessor transaction senders
   const coprocessorTxSenders = [];
   for (let idx = 0; idx < nCoprocessors; idx++) {
@@ -68,6 +91,13 @@ async function initTestingWallets(nKmsNodes: number, nCoprocessors: number, nCus
     const coprocessorSigner = await hre.ethers.getSigner(getRequiredEnvVar(`COPROCESSOR_SIGNER_ADDRESS_${idx}`));
     await checkIsHardhatSigner(coprocessorSigner);
     coprocessorSigners.push(coprocessorSigner);
+  }
+
+  // Load the coprocessor S3 buckets
+  const coprocessorS3Buckets = [];
+  for (let idx = 0; idx < nCoprocessors; idx++) {
+    const coprocessorS3Bucket = getRequiredEnvVar(`COPROCESSOR_S3_BUCKET_URL_${idx}`);
+    coprocessorS3Buckets.push(coprocessorS3Bucket);
   }
 
   // Load the custodian transaction senders
@@ -93,16 +123,28 @@ async function initTestingWallets(nKmsNodes: number, nCoprocessors: number, nCus
     custodianEncryptionKeys.push(custodianEncryptionKey);
   }
 
+  // Load the protocol payment prices
+  const inputVerificationPrice = BigInt(getRequiredEnvVar("INPUT_VERIFICATION_PRICE"));
+  const publicDecryptionPrice = BigInt(getRequiredEnvVar("PUBLIC_DECRYPTION_PRICE"));
+  const userDecryptionPrice = BigInt(getRequiredEnvVar("USER_DECRYPTION_PRICE"));
+
   return {
     owner,
     pauser,
+    tokenFundedTxSender,
     kmsTxSenders,
     kmsSigners,
+    kmsNodeIps,
+    kmsNodeStorageUrls,
     coprocessorTxSenders,
     coprocessorSigners,
+    coprocessorS3Buckets,
     custodianTxSenders,
     custodianSigners,
     custodianEncryptionKeys,
+    inputVerificationPrice,
+    publicDecryptionPrice,
+    userDecryptionPrice,
   };
 }
 
@@ -119,53 +161,61 @@ export async function loadTestVariablesFixture() {
   // Load the transaction senders and signers
   const fixtureData = await initTestingWallets(nKmsNodes, nCoprocessors, nCustodians);
 
+  // Load the environment variables for the /addresses directory
+  dotenv.config({ path: path.join(ADDRESSES_DIR, ".env.gateway"), override: true });
+
   // Load the GatewayConfig contract
-  const parsedEnvGatewayConfig = dotenv.parse(fs.readFileSync("addresses/.env.gateway_config"));
-  const gatewayConfig = await hre.ethers.getContractAt("GatewayConfig", parsedEnvGatewayConfig.GATEWAY_CONFIG_ADDRESS);
+  const gatewayConfig = await hre.ethers.getContractAt("GatewayConfig", getRequiredEnvVar("GATEWAY_CONFIG_ADDRESS"));
 
   // Load the InputVerification contract
-  const parsedEnvInputVerification = dotenv.parse(fs.readFileSync("addresses/.env.input_verification"));
   const inputVerification = await hre.ethers.getContractAt(
     "InputVerification",
-    parsedEnvInputVerification.INPUT_VERIFICATION_ADDRESS,
+    getRequiredEnvVar("INPUT_VERIFICATION_ADDRESS"),
   );
 
-  // Load the KmsManagement contract
-  const parsedEnvKmsManagement = dotenv.parse(fs.readFileSync("addresses/.env.kms_management"));
-  const kmsManagement = await hre.ethers.getContractAt("KmsManagement", parsedEnvKmsManagement.KMS_MANAGEMENT_ADDRESS);
+  // Load the KMSGeneration contract
+  const kmsGeneration = await hre.ethers.getContractAt("KMSGeneration", getRequiredEnvVar("KMS_GENERATION_ADDRESS"));
 
   // Load the CiphertextCommits contract
-  const parsedEnvCiphertextCommits = dotenv.parse(fs.readFileSync("addresses/.env.ciphertext_commits"));
   const ciphertextCommits = await hre.ethers.getContractAt(
     "CiphertextCommits",
-    parsedEnvCiphertextCommits.CIPHERTEXT_COMMITS_ADDRESS,
+    getRequiredEnvVar("CIPHERTEXT_COMMITS_ADDRESS"),
   );
 
-  // Load the MultichainAcl contract
-  const parsedEnvMultichainAcl = dotenv.parse(fs.readFileSync("addresses/.env.multichain_acl"));
-  const multichainAcl = await hre.ethers.getContractAt("MultichainAcl", parsedEnvMultichainAcl.MULTICHAIN_ACL_ADDRESS);
+  // Load the MultichainACL contract
+  const multichainACL = await hre.ethers.getContractAt("MultichainACL", getRequiredEnvVar("MULTICHAIN_ACL_ADDRESS"));
 
   // Load the Decryption contract
-  const parsedEnvDecryption = dotenv.parse(fs.readFileSync("addresses/.env.decryption"));
-  const decryption = await hre.ethers.getContractAt("Decryption", parsedEnvDecryption.DECRYPTION_ADDRESS);
+  const decryption = await hre.ethers.getContractAt("Decryption", getRequiredEnvVar("DECRYPTION_ADDRESS"));
 
-  // Load the FHE parameters
-  const fheParamsName = getRequiredEnvVar("FHE_PARAMS_NAME");
-  const fheParamsDigest = getRequiredEnvVar("FHE_PARAMS_DIGEST");
+  // Load the PauserSet contract
+  const pauserSet = await hre.ethers.getContractAt("PauserSet", getRequiredEnvVar("PAUSER_SET_ADDRESS"));
+
+  // Load the ProtocolPayment contract
+  const protocolPayment = await hre.ethers.getContractAt(
+    "ProtocolPayment",
+    getRequiredEnvVar("PROTOCOL_PAYMENT_ADDRESS"),
+  );
+
+  // Load the mocked payment bridging contracts
+  const mockedZamaOFT = await hre.ethers.getContractAt("ZamaOFT", getRequiredEnvVar("ZAMA_OFT_ADDRESS"));
+  const mockedFeesSenderToBurnerAddress = getRequiredEnvVar("FEES_SENDER_TO_BURNER_ADDRESS");
 
   return {
     ...fixtureData,
     gatewayConfig,
-    kmsManagement,
+    kmsGeneration,
     ciphertextCommits,
-    multichainAcl,
+    multichainACL,
     decryption,
     inputVerification,
     chainIds,
     nKmsNodes,
     nCoprocessors,
     nCustodians,
-    fheParamsName,
-    fheParamsDigest,
+    pauserSet,
+    protocolPayment,
+    mockedZamaOFT,
+    mockedFeesSenderToBurnerAddress,
   };
 }

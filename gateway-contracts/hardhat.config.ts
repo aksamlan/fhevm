@@ -4,16 +4,23 @@ import "@nomicfoundation/hardhat-verify";
 import "@openzeppelin/hardhat-upgrades";
 import "@typechain/hardhat";
 import dotenv from "dotenv";
+import "hardhat-dependency-compiler";
 import "hardhat-ignore-warnings";
 import { HardhatUserConfig, task, types } from "hardhat/config";
 import { resolve } from "path";
+import "solidity-coverage";
 
 import "./tasks/accounts";
 import "./tasks/addHostChains";
-import "./tasks/deployment/contracts";
-import "./tasks/deployment/empty_proxies";
-import "./tasks/deployment/mock_contracts";
+import "./tasks/addPausers";
+import "./tasks/blockExplorerVerify";
+import "./tasks/deployment";
+import "./tasks/generateKmsMaterials";
 import "./tasks/getters";
+import "./tasks/mockedTokenFund";
+import "./tasks/ownership";
+import "./tasks/pauseContracts";
+import "./tasks/reshareKeys";
 import "./tasks/upgradeContracts";
 
 const dotenvConfigPath: string = process.env.DOTENV_CONFIG_PATH || "./.env";
@@ -21,12 +28,18 @@ dotenv.config({ path: resolve(__dirname, dotenvConfigPath) });
 
 export const NUM_ACCOUNTS = 30;
 
+// Define the directory and file names for registering the Gateway contract addresses
+export const ADDRESSES_DIR = resolve(__dirname, "addresses");
+export const GATEWAY_ADDRESSES_ENV_FILE_NAME = ".env.gateway";
+export const GATEWAY_ADDRESSES_SOLIDITY_FILE_NAME = "GatewayAddresses.sol";
+
 const chainIds = {
   hardhat: 31337,
   localGateway: 123456,
   staging: 54321,
-  zwsDev: 412346,
-  testnet: 55815,
+  devnet: 10900,
+  testnet: 10901,
+  mainnet: 261131,
 };
 
 // If the mnemonic is not set, use a default one
@@ -53,10 +66,18 @@ task("test", "Runs the test suite, optionally skipping setup tasks")
   .addOptionalParam("skipSetup", "Set to true to skip setup tasks", false, types.boolean)
   .setAction(async ({ skipSetup }, hre, runSuper) => {
     if (!skipSetup) {
-      await hre.run("task:deployAllGatewayContracts");
+      // Deploy the gateway contracts, including the mocked payment bridging ones (needed for tests)
+      // In a real environment, the real payment bridging contracts will already be deployed
+      // It sets the contracts' addresses in the `addresses/` directory.
+      await hre.run("task:deployAllGatewayContractsForTests");
+
       // Contrary to deployment, here we consider the GatewayConfig address from the `addresses/` directory
       // for local testing
       await hre.run("task:addHostChainsToGatewayConfig", { useInternalGatewayConfigAddress: true });
+
+      // Contrary to deployment, here we consider the PauserSet address from the `addresses/` directory
+      // for local testing
+      await hre.run("task:addGatewayPausers", { useInternalGatewayConfigAddress: true });
     } else {
       console.log("Skipping contracts setup.");
     }
@@ -91,13 +112,13 @@ const config: HardhatUserConfig = {
       chainId: process.env.CHAIN_ID_GATEWAY ? Number(process.env.CHAIN_ID_GATEWAY) : chainIds.staging,
       url: rpcUrl,
     },
-    zwsDev: {
+    devnet: {
       accounts: {
         count: NUM_ACCOUNTS,
         mnemonic,
         path: "m/44'/60'/0'/0",
       },
-      chainId: process.env.CHAIN_ID_GATEWAY ? Number(process.env.CHAIN_ID_GATEWAY) : chainIds.zwsDev,
+      chainId: process.env.CHAIN_ID_GATEWAY ? Number(process.env.CHAIN_ID_GATEWAY) : chainIds.devnet,
       url: rpcUrl,
     },
     testnet: {
@@ -109,30 +130,48 @@ const config: HardhatUserConfig = {
       chainId: process.env.CHAIN_ID_GATEWAY ? Number(process.env.CHAIN_ID_GATEWAY) : chainIds.testnet,
       url: rpcUrl,
     },
+    mainnet: {
+      accounts: {
+        count: NUM_ACCOUNTS,
+        mnemonic,
+        path: "m/44'/60'/0'/0",
+      },
+      chainId: process.env.CHAIN_ID_GATEWAY ? Number(process.env.CHAIN_ID_GATEWAY) : chainIds.mainnet,
+      url: rpcUrl,
+    },
   },
   sourcify: {
     enabled: false,
   },
   etherscan: {
     apiKey: {
-      zwsDev: "empty",
+      devnet: "empty",
       testnet: "empty",
+      mainnet: "empty",
     },
     customChains: [
       {
-        network: "zwsDev",
-        chainId: chainIds.zwsDev,
+        network: "devnet",
+        chainId: chainIds.devnet,
         urls: {
-          apiURL: "http://l2-blockscout-zws-dev-blockscout-stack-blockscout-svc/api",
-          browserURL: "https://l2-explorer-zws-dev.diplodocus-boa.ts.net",
+          apiURL: "https://explorer.dev.zama.cloud/api",
+          browserURL: "https://explorer.dev.zama.cloud/",
         },
       },
       {
         network: "testnet",
         chainId: chainIds.testnet,
         urls: {
-          apiURL: "https://explorer.testnet.zama.cloud/api",
-          browserURL: "https://explorer.testnet.zama.cloud/",
+          apiURL: "https://explorer-zama-testnet-0.t.conduit.xyz/api",
+          browserURL: "https://explorer-zama-testnet-0.t.conduit.xyz",
+        },
+      },
+      {
+        network: "mainnet",
+        chainId: chainIds.mainnet,
+        urls: {
+          apiURL: "https://explorer-zama-gateway-mainnet.t.conduit.xyz/api",
+          browserURL: "https://explorer-zama-gateway-mainnet.t.conduit.xyz",
         },
       },
     ],

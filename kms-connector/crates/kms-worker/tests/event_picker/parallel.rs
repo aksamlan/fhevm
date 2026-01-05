@@ -1,105 +1,124 @@
-use std::time::Duration;
-
 use alloy::primitives::U256;
-use connector_tests::{rand::rand_sns_ct, setup::test_instance_with_db_only};
-use connector_utils::types::{GatewayEvent, db::SnsCiphertextMaterialDbItem};
-use fhevm_gateway_rust_bindings::decryption::Decryption::PublicDecryptionRequest;
-use kms_worker::core::{DbEventPicker, EventPicker};
-use tokio::time::timeout;
+use connector_utils::{
+    tests::{
+        db::requests::{check_no_uncompleted_request_in_db, insert_rand_request},
+        setup::TestInstanceBuilder,
+    },
+    types::db::EventType,
+};
+use kms_worker::core::{Config, DbEventPicker, EventPicker};
+use rstest::rstest;
+use sqlx::{Pool, Postgres};
+use std::time::Duration;
+use tracing::info;
 
+#[rstest]
+#[timeout(Duration::from_secs(60))]
 #[tokio::test]
-async fn test_parallel_event_picker_one_events() -> anyhow::Result<()> {
-    let test_instance = test_instance_with_db_only().await?;
+async fn test_parallel_public_decryption_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::PublicDecryptionRequest).await
+}
 
-    let mut event_picker0 = DbEventPicker::connect(test_instance.db.clone()).await?;
-    let mut event_picker1 = DbEventPicker::connect(test_instance.db.clone()).await?;
+#[rstest]
+#[timeout(Duration::from_secs(60))]
+#[tokio::test]
+async fn test_parallel_user_decryption_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::UserDecryptionRequest).await
+}
 
-    let id0 = U256::ZERO;
-    let sns_ct = vec![rand_sns_ct()];
-    let sns_ciphertexts_db = sns_ct
-        .iter()
-        .map(SnsCiphertextMaterialDbItem::from)
-        .collect::<Vec<SnsCiphertextMaterialDbItem>>();
+#[rstest]
+#[timeout(Duration::from_secs(60))]
+#[tokio::test]
+async fn test_parallel_prep_keygen_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::PrepKeygenRequest).await
+}
 
-    println!("Inserting only one PublicDecryptionRequest for two event picker...");
-    sqlx::query!(
-        "INSERT INTO public_decryption_requests VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        id0.as_le_slice(),
-        sns_ciphertexts_db.clone() as Vec<SnsCiphertextMaterialDbItem>,
-    )
-    .execute(&test_instance.db)
-    .await?;
+#[rstest]
+#[timeout(Duration::from_secs(60))]
+#[tokio::test]
+async fn test_parallel_keygen_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::KeygenRequest).await
+}
 
-    println!("Picking PublicDecryptionRequest...");
-    let event0 = event_picker0.pick_event().await?;
+#[rstest]
+#[timeout(Duration::from_secs(60))]
+#[tokio::test]
+async fn test_parallel_crsgen_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::CrsgenRequest).await
+}
 
-    // Should wait forever
-    if let Ok(res) = timeout(Duration::from_millis(300), event_picker1.pick_event()).await {
-        panic!("Timeout was expected, got result instead: {res:?}");
-    }
-
-    println!("Checking PublicDecryptionRequest data...");
-    assert_eq!(
-        event0,
-        GatewayEvent::PublicDecryption(PublicDecryptionRequest {
-            decryptionId: id0,
-            snsCtMaterials: sns_ct.clone(),
-        })
-    );
-    println!("Data OK!");
-    Ok(())
+#[rstest]
+#[timeout(Duration::from_secs(60))]
+#[tokio::test]
+#[ignore = "Not possible to have parallel PRSS Init the only ID currenly allowed is 1"]
+async fn test_parallel_prss_init_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::PrssInit).await
 }
 
 #[tokio::test]
-async fn test_parallel_event_picker_two_events() -> anyhow::Result<()> {
-    let test_instance = test_instance_with_db_only().await?;
+async fn test_parallel_key_reshare_same_set_picking() -> anyhow::Result<()> {
+    test_parallel_request_picking(EventType::KeyReshareSameSet).await
+}
 
-    let mut event_picker0 = DbEventPicker::connect(test_instance.db.clone()).await?;
-    let mut event_picker1 = DbEventPicker::connect(test_instance.db.clone()).await?;
+async fn test_parallel_request_picking(event_type: EventType) -> anyhow::Result<()> {
+    let test_instance = TestInstanceBuilder::db_setup().await?;
+    let mut event_picker = init_event_picker(test_instance.db().clone()).await?;
 
-    let id0 = U256::ZERO;
-    let id1 = U256::ONE;
-    let sns_ct = vec![rand_sns_ct()];
-    let sns_ciphertexts_db = sns_ct
-        .iter()
-        .map(SnsCiphertextMaterialDbItem::from)
-        .collect::<Vec<SnsCiphertextMaterialDbItem>>();
-
-    println!("Inserting two PublicDecryptionRequest for two event picker...");
-    sqlx::query!(
-        "INSERT INTO public_decryption_requests VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        id0.as_le_slice(),
-        sns_ciphertexts_db.clone() as Vec<SnsCiphertextMaterialDbItem>,
+    let insert_request0 = insert_rand_request(
+        test_instance.db(),
+        event_type,
+        Some(U256::ZERO),
+        false,
+        None,
     )
-    .execute(&test_instance.db)
     .await?;
-    sqlx::query!(
-        "INSERT INTO public_decryption_requests VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        id1.as_le_slice(),
-        sns_ciphertexts_db as Vec<SnsCiphertextMaterialDbItem>,
-    )
-    .execute(&test_instance.db)
-    .await?;
+    let insert_request1 =
+        insert_rand_request(test_instance.db(), event_type, Some(U256::ONE), false, None).await?;
 
-    println!("Picking the two PublicDecryptionRequest...");
-    let event0 = event_picker0.pick_event().await?;
-    let event1 = event_picker1.pick_event().await?;
+    info!("Picking two {event_type}...");
+    let events0 = event_picker.pick_events().await?;
+    let events1 = event_picker.pick_events().await?;
 
-    println!("Checking PublicDecryptionRequest data...");
+    info!("Checking {event_type} data...");
     assert_eq!(
-        event0,
-        GatewayEvent::PublicDecryption(PublicDecryptionRequest {
-            decryptionId: id0,
-            snsCtMaterials: sns_ct.clone(),
-        })
+        events0.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![insert_request0.clone()]
     );
     assert_eq!(
-        event1,
-        GatewayEvent::PublicDecryption(PublicDecryptionRequest {
-            decryptionId: id1,
-            snsCtMaterials: sns_ct,
-        })
+        events1.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![insert_request1]
     );
-    println!("Data OK!");
+
+    info!("Data OK! Releasing first {event_type}...");
+    for event in events0 {
+        event.mark_as_pending(test_instance.db()).await;
+    }
+
+    info!("Done! Picking first {event_type} again...");
+    let events0 = event_picker.pick_events().await?;
+    info!("Done! Checking data again...");
+    assert_eq!(
+        events0.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![insert_request0]
+    );
+
+    info!("Data OK! Marking all events as completed...");
+    for event in events0 {
+        event.mark_as_completed(test_instance.db()).await;
+    }
+    for event in events1 {
+        event.mark_as_completed(test_instance.db()).await;
+    }
+    info!("Done! Checking there is no uncompleted request in DB...");
+    check_no_uncompleted_request_in_db(test_instance.db(), event_type).await?;
+    info!("Done!");
     Ok(())
+}
+
+async fn init_event_picker(db: Pool<Postgres>) -> anyhow::Result<DbEventPicker> {
+    let config = Config {
+        events_batch_size: 1,
+        ..Default::default()
+    };
+    DbEventPicker::connect(db, &config).await
 }

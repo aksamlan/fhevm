@@ -36,9 +36,8 @@ task('test', async (taskArgs, hre, runSuper) => {
   // Run modified test task
   if (network.name === 'hardhat') {
     const privKeyFhevmDeployer = process.env.PRIVATE_KEY_FHEVM_DEPLOYER;
-    const privKeyFhevmRelayer = process.env.PRIVATE_KEY_DECRYPTION_ORACLE_RELAYER;
-    await hre.run('task:faucetToPrivate', { privateKey: privKeyFhevmDeployer });
-    await hre.run('task:faucetToPrivate', { privateKey: privKeyFhevmRelayer });
+    // await hre.run('task:faucetToPrivate', { privateKey: privKeyFhevmDeployer });
+    // await hre.run('task:faucetToPrivate', { privateKey: privKeyFhevmRelayer });
 
     await hre.run('compile:specific', { contract: 'contracts/emptyProxy' });
     await hre.run('task:deployEmptyUUPSProxies', {
@@ -48,7 +47,6 @@ task('test', async (taskArgs, hre, runSuper) => {
 
     await hre.run('compile:specific', { contract: 'contracts' });
     await hre.run('compile:specific', { contract: 'lib' });
-    await hre.run('compile:specific', { contract: 'decryptionOracle' });
 
     await hre.run('task:deployACL', { privateKey: privKeyFhevmDeployer });
     await hre.run('task:deployTFHEExecutor', {
@@ -61,9 +59,6 @@ task('test', async (taskArgs, hre, runSuper) => {
       privateKey: privKeyFhevmDeployer,
     });
     await hre.run('task:deployHCULimit', {
-      privateKey: privKeyFhevmDeployer,
-    });
-    await hre.run('task:deployDecryptionOracle', {
       privateKey: privKeyFhevmDeployer,
     });
 
@@ -114,6 +109,14 @@ function getChainConfig(chain: keyof typeof chainIds): NetworkUserConfig {
       }
       break;
     case 'sepolia':
+      jsonRpcUrl = process.env.RPC_URL || defaultRpcUrl;
+      if (jsonRpcUrl === defaultRpcUrl && !process.env.RPC_URL) {
+        console.warn(
+          `WARN: RPC_URL environment variable not set for network '${chain}'. Using default: ${defaultRpcUrl}`,
+        );
+      }
+      break;
+    case 'mainnet':
       jsonRpcUrl = process.env.RPC_URL || defaultRpcUrl;
       if (jsonRpcUrl === defaultRpcUrl && !process.env.RPC_URL) {
         console.warn(
@@ -185,6 +188,7 @@ const config: HardhatUserConfig = {
     staging: getChainConfig('staging'),
     zwsDev: getChainConfig('zwsDev'),
     sepolia: getChainConfig('sepolia'),
+    mainnet: getChainConfig('mainnet'),
     localNative: getChainConfig('localNative'),
     localCoprocessor: getChainConfig('localCoprocessor'),
     localCoprocessorL1: getChainConfig('localCoprocessorL1'),

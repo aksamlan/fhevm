@@ -2,7 +2,7 @@
 
 In this tutorial, you'll learn how to take a basic Solidity smart contract and progressively upgrade it to support Fully Homomorphic Encryption using the FHEVM library by Zama.
 
-Starting with the plain `Counter.sol` contract that you build from the ["Write a simple contract" tutorial](write_a_simple_contract.md), and step-by-step, you’ll learn how to:
+Starting with the plain `Counter.sol` contract that you built from the ["Write a simple contract" tutorial](write_a_simple_contract.md), and step-by-step, you’ll learn how to:
 
 - Replace standard types with encrypted equivalents
 - Integrate zero-knowledge proof validation
@@ -26,7 +26,7 @@ cd <your-project-root-directory>/contracts
 From there, create a new file named `FHECounter.sol`, and copy the following Solidity code into it:
 
 ```solidity
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 
 /// @title A simple counter contract
@@ -62,25 +62,25 @@ To begin integrating FHEVM features into your contract, we first need to import 
 #### Replace the current header
 
 ```solidity
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 ```
 
 #### With this updated header:
 
 ```solidity
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 
 import { FHE, euint32, externalEuint32 } from "@fhevm/solidity/lib/FHE.sol";
-import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
+import { ZamaEthereumConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 ```
 
-This imports:
+These imports:
 
 - **FHE** — the core library to work with FHEVM encrypted types
 - **euint32** and **externalEuint32** — encrypted uint32 types used in FHEVM
-- **SepoliaConfig** — provides the FHEVM configuration for the Sepolia network.\
+- **ZamaEthereumConfig** — provides the FHEVM configuration for the Ethereum mainnet or Ethereum Sepolia testnet networks.\
   Inheriting from it enables your contract to use the FHE library
 
 #### Replace the current contract declaration:
@@ -94,16 +94,16 @@ contract Counter {
 
 ```solidity
 /// @title A simple FHE counter contract
-contract FHECounter is SepoliaConfig {
+contract FHECounter is ZamaEthereumConfig {
 ```
 
 This change:
 
 - Renames the contract to `FHECounter`
-- Inherits from `SepoliaConfig` to enable FHEVM support
+- Inherits from `ZamaEthereumConfig` to enable FHEVM support
 
 {% hint style="warning" %}
-This contract must inherit from the `SepoliaConfig` abstract contract; otherwise, it will not be able to execute any FHEVM-related functionality on Sepolia or Hardhat.
+This contract must inherit from the `ZamaEthereumConfig` abstract contract; otherwise, it will not be able to execute any FHEVM-related functionality on Sepolia or Hardhat.
 {% endhint %}
 
 From your project's root directory, run:

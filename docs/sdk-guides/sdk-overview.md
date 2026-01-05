@@ -19,7 +19,7 @@ Otherwise:
 
 🟨 Go to [**User decryption**](user-decryption.md) to enable users to decrypt data with their own keys, once permissions have been granted via Access Control List(ACL).
 
-🟨 Go to [**Public decryption**](public-decryption.md) to learn how to decrypt outputs that are publicly accessible, either via HTTP or onchain Oracle.
+🟨 Go to [**Public decryption**](public-decryption.md) to learn how to decrypt outputs that are publicly accessible via the Relayer SDK.
 
 🟨 Go to [**Solidity ACL Guide**](https://docs.zama.ai/protocol/solidity-guides/smart-contract/acl) for more detailed instructions about access control.
 
@@ -27,5 +27,5 @@ Otherwise:
 
 Ask technical questions and discuss with the community.
 
-- [Community forum](https://community.zama.ai/c/fhevm/15)
-- [Discord channel](https://discord.com/invite/fhe-org)
+- [Community forum](https://community.zama.ai/c/zama-protocol/15)
+- [Discord channel](https://discord.com/invite/zama)

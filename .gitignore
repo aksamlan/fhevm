@@ -12,6 +12,7 @@ Desktop.ini
 # IDE and editor specific files
 .idea/
 .vscode/
+.claude/
 *.suo
 *.user
 *.userosscache
@@ -46,8 +47,10 @@ tmp/
 *.rar
 *.7z
 
-# Local configuration files
+# Local configuration and backup files
+.local/
 *-local.*
+.local
 
 # Node.js specific
 #-------------------------------------------------------------------------------

@@ -5,26 +5,19 @@ import {FHEVMExecutor} from "./FHEVMExecutor.sol";
 
 // Importing OpenZeppelin contracts for cryptographic signature verification and access control.
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeableEmptyProxy} from "./shared/UUPSUpgradeableEmptyProxy.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {EIP712UpgradeableCrossChain} from "./shared/EIP712UpgradeableCrossChain.sol";
+import {HANDLE_VERSION} from "./shared/Constants.sol";
+import {ACLOwnable} from "./shared/ACLOwnable.sol";
 
 /**
  * @title    InputVerifier.
  * @notice   This contract allows signature verification of user encrypted inputs.
- *           This contract is called by the FHEVMExecutor inside verifyCiphertext function
+ *           This contract is called by the FHEVMExecutor inside verifyInput function
  * @dev      The contract uses EIP712UpgradeableCrossChain for cryptographic operations.
  */
-contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EIP712UpgradeableCrossChain {
-    /// @notice         Emitted when a signer is added.
-    /// @param signer   The address of the signer that was added.
-    event SignerAdded(address indexed signer);
-
-    /// @notice         Emitted when a signer is removed.
-    /// @param signer   The address of the signer that was removed.
-    event SignerRemoved(address indexed signer);
-
+contract InputVerifier is UUPSUpgradeableEmptyProxy, EIP712UpgradeableCrossChain, ACLOwnable {
     /// @notice Returned if the deserializing of the input proof fails.
     error DeserializingInputProofFail();
 
@@ -43,17 +36,11 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     /// @notice Returned if the handle version is not the correct one.
     error InvalidHandleVersion();
 
-    /// @notice Returned if the initial signers set is empty.
-    error InitialSignersSetIsEmpty();
-
     /// @notice Returned if signer is null.
-    error SignerNull();
+    error CoprocessorSignerNull();
 
     /// @notice Returned if signer is already registered.
-    error AlreadySigner();
-
-    /// @notice Returned if no signer is already registered.
-    error AtLeastOneSignerIsRequired();
+    error CoprocessorAlreadySigner();
 
     ///  @notice Returned if not a registered signer.
     error NotASigner();
@@ -70,6 +57,20 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     /// @notice Returned when signatures verification fails.
     error SignaturesVerificationFailed();
 
+    /// @notice Returned if the signers set is empty.
+    error SignersSetIsEmpty();
+
+    /// @notice Returned if the chosen threshold is null.
+    error ThresholdIsNull();
+
+    /// @notice Threshold is above number of signers.
+    error ThresholdIsAboveNumberOfSigners();
+
+    /// @notice         Emitted when a context is set or changed.
+    /// @param newSignersSet  The set of new signers.
+    /// @param newThreshold   The new threshold set by the owner.
+    event NewContextSet(address[] newSignersSet, uint256 newThreshold);
+
     /// @param handles      List of handles.
     /// @param userAddress      Address of the user.
     /// @param contractAddress  Contract address.
@@ -83,17 +84,16 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
         address contractAddress;
         /// @notice The chainId of the contract requiring the ZK Proof verification.
         uint256 contractChainId;
+        /// @notice Generic bytes metadata for versioned payloads. First byte is for the version.
+        bytes extraData;
     }
 
     /// @notice The definition of the CiphertextVerification structure typed data.
     string public constant EIP712_INPUT_VERIFICATION_TYPE =
-        "CiphertextVerification(bytes32[] ctHandles,address userAddress,address contractAddress,uint256 contractChainId)";
+        "CiphertextVerification(bytes32[] ctHandles,address userAddress,address contractAddress,uint256 contractChainId,bytes extraData)";
 
     /// @notice The hash of the CiphertextVerification structure typed data definition used for signature validation.
     bytes32 public constant EIP712_INPUT_VERIFICATION_TYPEHASH = keccak256(bytes(EIP712_INPUT_VERIFICATION_TYPE));
-
-    /// @notice Handle version.
-    uint8 public constant HANDLE_VERSION = 0;
 
     /// @notice Name of the contract.
     string private constant CONTRACT_NAME = "InputVerifier";
@@ -105,7 +105,7 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     uint256 private constant MAJOR_VERSION = 0;
 
     /// @notice Minor version of the contract.
-    uint256 private constant MINOR_VERSION = 1;
+    uint256 private constant MINOR_VERSION = 2;
 
     /// @notice Patch version of the contract.
     uint256 private constant PATCH_VERSION = 0;
@@ -116,6 +116,10 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
         address[] signers; /// @notice Array to keep track of all signers
         uint256 threshold; /// @notice The threshold for the number of signers required for a signature to be valid
     }
+
+    /// Constant used for making sure the version number used in the `reinitializer` modifier is
+    /// identical between `initializeFromEmptyProxy` and the `reinitializeVX` method
+    uint64 private constant REINITIALIZER_VERSION = 3;
 
     /// keccak256(abi.encode(uint256(keccak256("fhevm.storage.InputVerifier")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant InputVerifierStorageLocation =
@@ -136,17 +140,72 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     function initializeFromEmptyProxy(
         address verifyingContractSource,
         uint64 chainIDSource,
-        address[] calldata initialSigners
-    ) public virtual onlyFromEmptyProxy reinitializer(2) {
-        __Ownable_init(owner());
+        address[] calldata initialSigners,
+        uint256 initialThreshold
+    ) public virtual onlyFromEmptyProxy reinitializer(REINITIALIZER_VERSION) {
         __EIP712_init(CONTRACT_NAME_SOURCE, "1", verifyingContractSource, chainIDSource);
-        uint256 initialSignersLen = initialSigners.length;
-        if (initialSignersLen == 0) {
-            revert InitialSignersSetIsEmpty();
+        defineNewContext(initialSigners, initialThreshold);
+    }
+
+    /**
+     * @notice Re-initializes the contract from V1.
+     * @dev Define a `reinitializeVX` function once the contract needs to be upgraded.
+     */
+    /// @custom:oz-upgrades-unsafe-allow missing-initializer-call
+    /// @custom:oz-upgrades-validate-as-initializer
+    function reinitializeV2(
+        address[] memory newSignersSet,
+        uint256 threshold
+    ) public virtual reinitializer(REINITIALIZER_VERSION) {
+        defineNewContext(newSignersSet, threshold);
+    }
+
+    /**
+     * @notice          Sets a new context (i.e. new set of unique signers and new threshold).
+     * @dev             Only the owner can set a new context.
+     * @param newSignersSet   The new set of signers to be set. This array should not be empty and without duplicates nor null values.
+     * @param newThreshold    The threshold to be set. Threshold should be non-null and less than the number of signers.
+     */
+    function defineNewContext(address[] memory newSignersSet, uint256 newThreshold) public virtual onlyACLOwner {
+        uint256 newSignersLen = newSignersSet.length;
+        if (newSignersLen == 0) {
+            revert SignersSetIsEmpty();
         }
-        for (uint256 i = 0; i < initialSignersLen; i++) {
-            addSigner(initialSigners[i]);
+
+        /// @dev First, we remove the old signers set
+        InputVerifierStorage storage $ = _getInputVerifierStorage();
+        address[] memory oldSignersSet = $.signers;
+        uint256 oldSignersLen = oldSignersSet.length;
+        for (uint256 i = 0; i < oldSignersLen; i++) {
+            $.isSigner[oldSignersSet[i]] = false;
+            $.signers.pop();
         }
+
+        /// @dev Next, we add the new set of signers.
+        for (uint256 i = 0; i < newSignersLen; i++) {
+            address signer = newSignersSet[i];
+            if (signer == address(0)) {
+                revert CoprocessorSignerNull();
+            }
+            if ($.isSigner[signer]) {
+                revert CoprocessorAlreadySigner();
+            }
+            $.isSigner[signer] = true;
+            $.signers.push(signer);
+        }
+        _setThreshold(newThreshold);
+        emit NewContextSet(newSignersSet, newThreshold);
+    }
+
+    /**
+     * @notice          Sets a threshold (i.e. the minimum number of valid signatures required to accept a transaction).
+     * @dev             Only the owner can set a threshold.
+     * @param threshold    The threshold to be set. Threshold should be non-null and less than the number of signers.
+     */
+    function setThreshold(uint256 threshold) public virtual onlyACLOwner {
+        _setThreshold(threshold);
+        InputVerifierStorage storage $ = _getInputVerifierStorage();
+        emit NewContextSet($.signers, threshold);
     }
 
     /**
@@ -177,7 +236,7 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
      * @param inputProof    Input proof.
      * @return result       Result.
      */
-    function verifyCiphertext(
+    function verifyInput(
         FHEVMExecutor.ContextUserInputs memory context,
         bytes32 inputHandle,
         bytes memory inputProof
@@ -200,7 +259,7 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
         if (!isProofCached) {
             /// @dev bundleCiphertext is compressedPackedCT+ZKPOK
             ///      inputHandle is keccak256(keccak256(bundleCiphertext)+index)[0:20] + index[21] + chainId[22:29] + type[30] + version[31]
-            ///      and inputProof is len(list_handles) + numSigners + list_handles + signatureCoprocessorSigners (1+1+NUM_HANDLES*32+65*numSigners)
+            ///      and inputProof is numHandles + numSigners + handles + coprocessorSignatures (1 + 1 + 32*numHandles + 65*numSigners + extraData bytes)
 
             uint256 inputProofLen = inputProof.length;
             if (inputProofLen == 0) revert EmptyInputProof();
@@ -209,7 +268,12 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
 
             /// @dev This checks in particular that the list is non-empty.
             if (numHandles <= indexHandle || indexHandle > 254) revert InvalidIndex();
-            if (inputProofLen != 2 + 32 * numHandles + 65 * numSigners) revert DeserializingInputProofFail();
+
+            /// @dev The extraData is the rest of the inputProof bytes after the numHandles + numSigners + handles + coprocessorSignatures.
+            uint256 extraDataOffset = 2 + 32 * numHandles + 65 * numSigners;
+
+            /// @dev Check that the inputProof is long enough to contain at least the numHandles + numSigners + handles + coprocessorSignatures
+            if (inputProofLen < extraDataOffset) revert DeserializingInputProofFail();
 
             /// @dev Deserialize handle and check that they are from the correct version.
             bytes32[] memory listHandles = new bytes32[](numHandles);
@@ -230,10 +294,21 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
                     signatures[j][i] = inputProof[2 + 32 * numHandles + 65 * j + i];
                 }
             }
+
             CiphertextVerification memory ctVerif;
             ctVerif.ctHandles = listHandles;
             ctVerif.userAddress = context.userAddress;
             ctVerif.contractAddress = context.contractAddress;
+            ctVerif.contractChainId = block.chainid;
+
+            /// @dev Extract the extraData from the inputProof.
+            uint256 extraDataSize = inputProof.length - extraDataOffset;
+            ctVerif.extraData = new bytes(extraDataSize);
+
+            for (uint i = 0; i < extraDataSize; i++) {
+                ctVerif.extraData[i] = inputProof[extraDataOffset + i];
+            }
+
             _verifyEIP712(ctVerif, signatures);
 
             _cacheProof(cacheKey);
@@ -250,53 +325,6 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
         }
 
         return bytes32(result);
-    }
-
-    /**
-     * @notice          Adds a new signer.
-     * @dev             Only the owner can add a signer.
-     * @param signer    The address to be added as a signer.
-     */
-    function addSigner(address signer) public virtual onlyOwner {
-        if (signer == address(0)) {
-            revert SignerNull();
-        }
-
-        InputVerifierStorage storage $ = _getInputVerifierStorage();
-        if ($.isSigner[signer]) {
-            revert AlreadySigner();
-        }
-
-        $.isSigner[signer] = true;
-        $.signers.push(signer);
-        _applyThreshold();
-        emit SignerAdded(signer);
-    }
-
-    /**
-     * @notice          Removes an existing signer.
-     * @dev             Only the owner can remove a signer.
-     * @param signer    The signer address to remove.
-     */
-    function removeSigner(address signer) public virtual onlyOwner {
-        InputVerifierStorage storage $ = _getInputVerifierStorage();
-        if (!$.isSigner[signer]) {
-            revert NotASigner();
-        }
-
-        /// @dev Remove signer from the mapping.
-        $.isSigner[signer] = false;
-
-        /// @dev Find the index of the signer and remove it from the array.
-        for (uint i = 0; i < $.signers.length; i++) {
-            if ($.signers[i] == signer) {
-                $.signers[i] = $.signers[$.signers.length - 1]; /// @dev Move the last element into the place to delete.
-                $.signers.pop(); /// @dev Remove the last element.
-                _applyThreshold();
-                emit SignerRemoved(signer);
-                return;
-            }
-        }
     }
 
     /**
@@ -326,6 +354,14 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     function isSigner(address account) public view virtual returns (bool) {
         InputVerifierStorage storage $ = _getInputVerifierStorage();
         return $.isSigner[account];
+    }
+
+    /**
+     * @notice        Getter for the handle version.
+     * @return uint8 The current version for new handles.
+     */
+    function getHandleVersion() external pure virtual returns (uint8) {
+        return HANDLE_VERSION;
     }
 
     /**
@@ -384,7 +420,8 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
                         keccak256(abi.encodePacked(ctVerification.ctHandles)),
                         ctVerification.userAddress,
                         ctVerification.contractAddress,
-                        block.chainid
+                        ctVerification.contractChainId,
+                        keccak256(abi.encodePacked(ctVerification.extraData))
                     )
                 )
             );
@@ -485,18 +522,19 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     }
 
     /**
-     * @notice Sets the threshold for the number of signers required for a signature to be valid.
+     * @notice          Internal function that sets the minimum number of valid signatures required to accept a transaction.
+     * @dev             External functions using this internal function should be access controlled to owner.
+     * @param threshold    The threshold to be set. Threshold should be non-null and less than the number of signers.
      */
-    function _applyThreshold() internal virtual {
-        InputVerifierStorage storage $ = _getInputVerifierStorage();
-        uint256 signerLength = $.signers.length;
-
-        if (signerLength != 0) {
-            $.threshold = signerLength / 2 + 1;
-        } else {
-            /// @dev It is impossible to remove all KMS signers.
-            revert AtLeastOneSignerIsRequired();
+    function _setThreshold(uint256 threshold) internal virtual {
+        if (threshold == 0) {
+            revert ThresholdIsNull();
         }
+        InputVerifierStorage storage $ = _getInputVerifierStorage();
+        if (threshold > $.signers.length) {
+            revert ThresholdIsAboveNumberOfSigners();
+        }
+        $.threshold = threshold;
     }
 
     /**
@@ -511,5 +549,5 @@ contract InputVerifier is UUPSUpgradeableEmptyProxy, Ownable2StepUpgradeable, EI
     /**
      * @dev Should revert when msg.sender is not authorized to upgrade the contract.
      */
-    function _authorizeUpgrade(address _newImplementation) internal virtual override onlyOwner {}
+    function _authorizeUpgrade(address _newImplementation) internal virtual override onlyACLOwner {}
 }

@@ -33,7 +33,7 @@ async function getCoprocessorSigners() {
   return coprocessorSigners;
 }
 
-const parsedEnvACL = dotenv.parse(fs.readFileSync('addresses/.env.acl'));
+const parsedEnvACL = dotenv.parse(fs.readFileSync('addresses/.env.host'));
 const aclAdd = parsedEnvACL.ACL_CONTRACT_ADDRESS;
 
 enum Types {
@@ -45,9 +45,6 @@ enum Types {
   euint128 = 6,
   eaddress = 7,
   euint256 = 8,
-  ebytes64 = 9,
-  ebytes128 = 10,
-  ebytes256 = 11,
 }
 
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
@@ -106,18 +103,6 @@ function createUintToUint8ArrayFunction(numBits: number) {
         byteBuffer = Buffer.from([Types.euint256]);
         totalBuffer = Buffer.concat([byteBuffer, combinedBuffer]);
         break;
-      case 512:
-        byteBuffer = Buffer.from([Types.ebytes64]);
-        totalBuffer = Buffer.concat([byteBuffer, combinedBuffer]);
-        break;
-      case 1024:
-        byteBuffer = Buffer.from([Types.ebytes128]);
-        totalBuffer = Buffer.concat([byteBuffer, combinedBuffer]);
-        break;
-      case 2048:
-        byteBuffer = Buffer.from([Types.ebytes256]);
-        totalBuffer = Buffer.concat([byteBuffer, combinedBuffer]);
-        break;
       default:
         throw Error('Non-supported numBits');
     }
@@ -167,24 +152,24 @@ export const userDecryptRequestMocked =
     const domain = {
       name: 'Decryption',
       version: '1',
-      chainId: process.env.CHAIN_ID_GATEWAY,
+      chainId: hre.network.config.chainId,
       verifyingContract: process.env.DECRYPTION_ADDRESS,
     };
     const types = {
       UserDecryptRequestVerification: [
         { name: 'publicKey', type: 'bytes' },
         { name: 'contractAddresses', type: 'address[]' },
-        { name: 'contractsChainId', type: 'uint256' },
         { name: 'startTimestamp', type: 'uint256' },
         { name: 'durationDays', type: 'uint256' },
+        { name: 'extraData', type: 'bytes' },
       ],
     };
     const value = {
       publicKey: `0x${publicKey}`,
       contractAddresses: contractAddresses,
-      contractsChainId: chainId,
       startTimestamp: startTimestamp,
       durationDays: durationDays,
+      extraData: '0x00',
     };
     const signerAddress = ethers.verifyTypedData(domain, types, value, `0x${signature}`);
     const normalizedSignerAddress = ethers.getAddress(signerAddress);
@@ -303,36 +288,6 @@ export const createEncryptedInputMocked = (contractAddress: string, userAddress:
       if (bits.length > 256) throw Error('Packing more than 256 variables in a single input ciphertext is unsupported');
       return this;
     },
-    addBytes64(value: Uint8Array) {
-      if (value.length !== 64) throw Error('Uncorrect length of input Uint8Array, should be 64 for an ebytes64');
-      const bigIntValue = bytesToBigInt(value);
-      checkEncryptedValue(bigIntValue, 512);
-      values.push(bigIntValue);
-      bits.push(512);
-      if (sum(bits) > 2048) throw Error('Packing more than 2048 bits in a single input ciphertext is unsupported');
-      if (bits.length > 256) throw Error('Packing more than 256 variables in a single input ciphertext is unsupported');
-      return this;
-    },
-    addBytes128(value: Uint8Array) {
-      if (value.length !== 128) throw Error('Uncorrect length of input Uint8Array, should be 128 for an ebytes128');
-      const bigIntValue = bytesToBigInt(value);
-      checkEncryptedValue(bigIntValue, 1024);
-      values.push(bigIntValue);
-      bits.push(1024);
-      if (sum(bits) > 2048) throw Error('Packing more than 2048 bits in a single input ciphertext is unsupported');
-      if (bits.length > 256) throw Error('Packing more than 256 variables in a single input ciphertext is unsupported');
-      return this;
-    },
-    addBytes256(value: Uint8Array) {
-      if (value.length !== 256) throw Error('Uncorrect length of input Uint8Array, should be 256 for an ebytes256');
-      const bigIntValue = bytesToBigInt(value);
-      checkEncryptedValue(bigIntValue, 2048);
-      values.push(bigIntValue);
-      bits.push(2048);
-      if (sum(bits) > 2048) throw Error('Packing more than 2048 bits in a single input ciphertext is unsupported');
-      if (bits.length > 256) throw Error('Packing more than 256 variables in a single input ciphertext is unsupported');
-      return this;
-    },
     getValues() {
       return values;
     },
@@ -353,6 +308,7 @@ export const createEncryptedInputMocked = (contractAddress: string, userAddress:
 
       const encryptedArray = new Uint8Array(encrypted);
       const hash = new Keccak(256).update(Buffer.from(encryptedArray)).digest();
+      const extraDataV0 = ethers.solidityPacked(['uint8'], [0]);
 
       const chainId = process.env.SOLIDITY_COVERAGE === 'true' ? 31337 : hre.network.config.chainId;
       if (chainId === undefined) {
@@ -388,9 +344,17 @@ export const createEncryptedInputMocked = (contractAddress: string, userAddress:
       const listHandlesStr = handles.map((i) => uint8ArrayToHexString(i));
       listHandlesStr.map((handle) => (inputProof += handle));
       const listHandles = listHandlesStr.map((i) => BigInt('0x' + i));
-      const signaturesCoproc = await computeInputSignaturesCopro(listHandles, userAddress, contractAddress);
+      const signaturesCoproc = await computeInputSignaturesCopro(
+        listHandles,
+        userAddress,
+        contractAddress,
+        extraDataV0,
+      );
       signaturesCoproc.map((sigCopro) => (inputProof += sigCopro.slice(2)));
       listHandlesStr.map((handle, i) => insertSQL('0x' + handle, values[i]));
+
+      // Append the extra data to the input proof
+      inputProof = ethers.concat([inputProof, extraDataV0]);
 
       return {
         handles,
@@ -444,6 +408,7 @@ async function computeInputSignaturesCopro(
   handlesList: string[],
   userAddress: string,
   contractAddress: string,
+  extraData: string,
 ): Promise<string[]> {
   const signatures: string[] = [];
   const numSigners = +process.env.NUM_COPROCESSORS!;
@@ -451,7 +416,7 @@ async function computeInputSignaturesCopro(
 
   for (let idx = 0; idx < numSigners; idx++) {
     const coprocSigner = signers[idx];
-    const signature = await coprocSign(handlesList, userAddress, contractAddress, coprocSigner);
+    const signature = await coprocSign(handlesList, userAddress, contractAddress, extraData, coprocSigner);
     signatures.push(signature);
   }
   return signatures;
@@ -461,6 +426,7 @@ async function coprocSign(
   handlesList: string[],
   userAddress: string,
   contractAddress: string,
+  extraData: string,
   signer: Wallet,
 ): Promise<string> {
   const inputVerificationAdd = process.env.INPUT_VERIFICATION_ADDRESS;
@@ -492,6 +458,10 @@ async function coprocSign(
         name: 'contractChainId',
         type: 'uint256',
       },
+      {
+        name: 'extraData',
+        type: 'bytes',
+      },
     ],
   };
 
@@ -500,6 +470,7 @@ async function coprocSign(
     userAddress: userAddress,
     contractAddress: contractAddress,
     contractChainId: hostChainId,
+    extraData,
   };
 
   const signature = await signer.signTypedData(domain, types, message);
